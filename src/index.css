@@ -31,3 +31,36 @@
     opacity: 0;
   }
 }
+
+/* ===== REVEAL ANIMATION (HOME.TSX)===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity 0.8s ease,
+    transform 0.8s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===== CAROUSEL OVERLAYS (HOME.TSX===== */
+.carousel-container::before,
+.carousel-container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  z-index: 2;
+  pointer-events: none;
+}
+.carousel-container::before {
+  left: 0;
+  background: linear-gradient(to right, #f9fafb, transparent);
+}
+.carousel-container::after {
+  right: 0;
+  background: linear-gradient(to left, #f9fafb, transparent);
+}

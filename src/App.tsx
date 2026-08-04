@@ -1,20 +1,23 @@
 import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
+import Home from "./pages/Home";
+import Empresa from "./pages/Empresa";
+import Servicios from "./pages/Servicios";
+import { Route, Routes } from "react-router-dom";
 
 function App() {
   return (
     <div className="min-h-screen bg-white text-gray-800">
       <Header />
 
-      <main className="min-h-[70vh]">
-        <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-          <h1 className="text-4xl font-bold text-gray-900">Hola mundo</h1>
-          <p className="mt-4 max-w-2xl text-lg text-gray-600">
-            Tu nueva app React + TypeScript ya tiene un layout base listo para crecer.
-          </p>
-        </section>
-      </main>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/empresa" element={<Empresa />} />
+        <Route path="/servicios" element={<Servicios />} />
+        {/* Ruta 404 opcional */}
+        <Route path="*" element={<Home />} />
+      </Routes>
 
       <Footer />
       <WhatsAppButton />

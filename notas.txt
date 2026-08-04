@@ -1,0 +1,1 @@
+Mejorar lo componentes, todo esta muy junto, se pueden separar en varios archivos.
