@@ -5,12 +5,13 @@ import Home from "./pages/Home";
 import Empresa from "./pages/Empresa";
 import Servicios from "./pages/Servicios";
 import { Route, Routes } from "react-router-dom";
+import ScrollToHash from "./components/ScrollToHash";
 
 function App() {
   return (
     <div className="min-h-screen bg-white text-gray-800">
       <Header />
-
+      <ScrollToHash />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/empresa" element={<Empresa />} />
