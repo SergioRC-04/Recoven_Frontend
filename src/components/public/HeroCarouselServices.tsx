@@ -14,6 +14,8 @@ import {
   FaChevronLeft,
   FaChevronRight,
 } from "react-icons/fa";
+import { useServicePreselect } from "../../hooks/useServicePreselect";
+import { useNavigate } from "react-router-dom";
 
 const slides = [
   {
@@ -51,6 +53,9 @@ const slides = [
 ];
 
 export default function HeroCarouselServices() {
+  const { setPreselect } = useServicePreselect();
+  const navigate = useNavigate();
+
   return (
     <section
       id="hero-carousel-container"
@@ -58,7 +63,6 @@ export default function HeroCarouselServices() {
     >
       {/* Columna Izquierda: Hero Fijo */}
       <div className="hero-column from-primary-green bg-primary-green relative flex w-full items-center justify-center overflow-hidden p-8 text-center md:w-[35%] md:p-12 md:text-left">
-        {/* Pseudoelemento con blur (se define en CSS global) */}
         <div className="hero-content relative z-10 max-w-[90%] text-left">
           <span className="hero-badge border-accent/50 mb-6 inline-block rounded-full border bg-white/20 px-5 py-2 text-xs font-semibold tracking-widest text-white uppercase backdrop-blur-sm">
             Gestión Ambiental Integral
@@ -113,7 +117,12 @@ export default function HeroCarouselServices() {
                       {slide.description}
                     </p>
                     <a
-                      href={`/#contacto?service=${encodeURIComponent(slide.serviceParam)}`}
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault(); // Evita recarga
+                        setPreselect(undefined, slide.serviceParam);
+                        navigate("/#contacto"); // Navegación SPA
+                      }}
                       className="carousel-cta-button text-primary-green bg-accent mt-6 inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold shadow-lg transition hover:-translate-y-1 hover:opacity-90"
                     >
                       <FaPaperPlane /> Solicitar

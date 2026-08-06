@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import {
   FaMapMarkerAlt,
   FaPhoneAlt,
@@ -7,7 +7,11 @@ import {
   FaWhatsapp,
   FaPaperPlane,
   FaLock,
+  FaCheckCircle,
+  FaTimesCircle,
 } from "react-icons/fa";
+import { recovenApi } from "../../services/api";
+import { useServicePreselect } from "../../hooks/useServicePreselect";
 
 interface FormData {
   nombre: string;
@@ -20,20 +24,46 @@ interface FormData {
   mensaje: string;
 }
 
+interface SubmitStatus {
+  type: "idle" | "success" | "error";
+  message: string;
+}
+
 export default function ContactForm() {
+  const { servicio: servicioPreselect, especialidad: especialidadPreselect } =
+    useServicePreselect();
+
+  // Inicializar estado con los valores de sessionStorage y URL
   const [formData, setFormData] = useState<FormData>({
     nombre: "",
     telefono: "",
     email: "",
     empresa: "",
     direccion: "",
-    servicio: "",
-    especialidad: "",
+    servicio: servicioPreselect || "",
+    especialidad: especialidadPreselect || "",
     mensaje: "",
   });
 
+  useEffect(() => {
+    if (servicioPreselect && !formData.servicio) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormData((prev) => ({ ...prev, servicio: servicioPreselect }));
+    }
+    if (especialidadPreselect && !formData.especialidad) {
+      setFormData((prev) => ({ ...prev, especialidad: especialidadPreselect }));
+    }
+  }, [servicioPreselect, especialidadPreselect, formData.servicio, formData.especialidad]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>({
+    type: "idle",
+    message: "",
+  });
+
+  // No necesitamos useEffect para la preselección, ya que se hizo en la inicialización.
+  // Solo un useEffect para limpiar la URL y sessionStorage si es necesario (ya lo hicimos en getInitialFormData).
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -43,6 +73,10 @@ export default function ContactForm() {
     // Limpiar error del campo cuando el usuario escribe
     if (errors[name as keyof FormData]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+    // Ocultar mensaje de éxito/error al editar
+    if (submitStatus.type !== "idle") {
+      setSubmitStatus({ type: "idle", message: "" });
     }
   };
 
@@ -66,13 +100,27 @@ export default function ContactForm() {
     if (!validate()) return;
 
     setIsSubmitting(true);
+    setSubmitStatus({ type: "idle", message: "" });
 
     try {
-      // Aquí puedes enviar los datos a tu API
-      console.log("Datos del formulario:", formData);
-      // Simular envío
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      alert("¡Solicitud enviada! Nos pondremos en contacto pronto.");
+      // Enviar al backend usando recovenApi
+      await recovenApi.post("/leads/send-lead", {
+        nombre: formData.nombre,
+        telefono: formData.telefono,
+        email: formData.email,
+        empresa: formData.empresa || undefined,
+        direccion: formData.direccion || undefined,
+        servicio: formData.servicio,
+        especialidad: formData.especialidad || undefined,
+        mensaje: formData.mensaje || undefined,
+      });
+
+      // Éxito
+      setSubmitStatus({
+        type: "success",
+        message: "¡Solicitud enviada con éxito! Nos pondremos en contacto pronto.",
+      });
+
       // Resetear formulario
       setFormData({
         nombre: "",
@@ -84,8 +132,14 @@ export default function ContactForm() {
         especialidad: "",
         mensaje: "",
       });
-    } catch {
-      alert("Ocurrió un error al enviar. Inténtalo de nuevo.");
+      // Limpiar errores
+      setErrors({});
+    } catch (error) {
+      console.error("[ContactForm] Error:", error);
+      setSubmitStatus({
+        type: "error",
+        message: "Hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo.",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -238,6 +292,20 @@ export default function ContactForm() {
                   placeholder="Ej: Necesito un servicio de recolección de residuos..."
                 />
               </div>
+
+              {/* Mensaje de éxito/error */}
+              {submitStatus.type === "success" && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                  <FaCheckCircle className="text-green-500" />
+                  {submitStatus.message}
+                </div>
+              )}
+              {submitStatus.type === "error" && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  <FaTimesCircle className="text-red-500" />
+                  {submitStatus.message}
+                </div>
+              )}
 
               <button
                 type="submit"

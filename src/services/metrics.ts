@@ -1,4 +1,4 @@
-import { recovenApi } from "./Api";
+import { recovenApi } from "./api";
 
 export interface Metric {
   sede: string;

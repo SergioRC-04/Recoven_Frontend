@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import HeroCarouselServices from "../components/public/HeroCarouselServices";
 import StatisticsSection from "../components/public/StatisticsSection";
 import CTASection from "../components/public/CTASection";
+import { useServicePreselect } from "../hooks/useServicePreselect";
+import { useNavigate } from "react-router-dom";
+
 import {
   FaMapMarkedAlt,
   FaProjectDiagram,
@@ -22,6 +25,9 @@ import {
 } from "react-icons/fa";
 
 export default function Servicios() {
+  const { setPreselect } = useServicePreselect();
+  const navigate = useNavigate();
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -83,7 +89,12 @@ export default function Servicios() {
                 </li>
               </ul>
               <a
-                href="/#contacto?service=Limpieza%20y%20Mantenimiento%20de%20Bermas"
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault(); // Evita recarga
+                  setPreselect(undefined, "Limpieza y Mantenimiento de Bermas");
+                  navigate("/#contacto"); // Navegación SPA
+                }}
                 className="bg-primary-green hover:bg-opacity-90 mt-8 inline-flex items-center gap-2 rounded-full px-7 py-3 font-bold text-white shadow-md transition hover:-translate-y-0.5"
               >
                 <FaTruck /> Solicitar este servicio

@@ -3,8 +3,11 @@ import { Link } from "react-router-dom";
 import { FaHome, FaIndustry, FaLeaf, FaCertificate, FaArrowRight } from "react-icons/fa";
 import ClientsCarousel from "../components/public/ClientsCarousel";
 import ContactForm from "../components/public/ContactForm";
+import { useServicePreselect } from "../hooks/useServicePreselect";
 
 function Home() {
+  const { setPreselect } = useServicePreselect();
+
   // Efecto para la animación "reveal"
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -48,6 +51,7 @@ function Home() {
             <div className="mt-10 flex flex-wrap gap-4">
               <a
                 href="#tipos-servicio"
+                onClick={() => setPreselect("Servicio Residencial")}
                 className="bg-primary-green hover:bg-opacity-90 relative inline-flex items-center gap-2 rounded-full px-7 py-3 font-bold text-white shadow-lg transition hover:-translate-y-0.5 active:opacity-90"
                 data-service="Servicio Residencial"
               >
@@ -55,6 +59,7 @@ function Home() {
               </a>
               <a
                 href="#tipos-servicio"
+                onClick={() => setPreselect("Servicio Industrial / Comercial")}
                 className="border-accent hover:bg-accent relative inline-flex items-center gap-2 rounded-full border-2 px-7 py-3 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:text-gray-900 active:opacity-90"
                 data-service="Servicio Industrial / Comercial"
               >
@@ -169,6 +174,7 @@ function Home() {
               </p>
               <a
                 href="#contacto"
+                onClick={() => setPreselect("Servicio Residencial")}
                 className="bg-primary-green hover:bg-opacity-90 relative block w-full rounded-xl px-6 py-3 font-bold text-white transition active:opacity-90"
                 data-service="Servicio Residencial"
               >
@@ -186,6 +192,7 @@ function Home() {
               </p>
               <a
                 href="#contacto"
+                onClick={() => setPreselect("Servicio Industrial / Comercial")}
                 className="relative block w-full rounded-xl px-6 py-3 font-bold text-white transition hover:opacity-90 active:opacity-90"
                 style={{ backgroundColor: "#e4b363" }}
                 data-service="Servicio Industrial / Comercial"
