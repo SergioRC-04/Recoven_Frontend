@@ -11,8 +11,9 @@ import {
   type TooltipItem,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
-import { fetchMetrics, downloadMetricsPDF, type Metric } from "../../services/metrics";
+import { fetchMetrics, downloadMetricsPDF } from "../../services/metrics";
 import { FaChartBar, FaWarehouse, FaFilePdf, FaSpinner } from "react-icons/fa";
+import { type Metric } from "../../types/metric";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 

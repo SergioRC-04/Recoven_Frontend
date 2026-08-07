@@ -1,4 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { useServicePreselect } from "../../hooks/useServicePreselect";
+import { sendLead } from "../../services/leads";
 import {
   FaMapMarkerAlt,
   FaPhoneAlt,
@@ -10,8 +12,6 @@ import {
   FaCheckCircle,
   FaTimesCircle,
 } from "react-icons/fa";
-import { recovenApi } from "../../services/api";
-import { useServicePreselect } from "../../hooks/useServicePreselect";
 
 interface FormData {
   nombre: string;
@@ -103,8 +103,7 @@ export default function ContactForm() {
     setSubmitStatus({ type: "idle", message: "" });
 
     try {
-      // Enviar al backend usando recovenApi
-      await recovenApi.post("/leads/send-lead", {
+      await sendLead({
         nombre: formData.nombre,
         telefono: formData.telefono,
         email: formData.email,
@@ -115,7 +114,6 @@ export default function ContactForm() {
         mensaje: formData.mensaje || undefined,
       });
 
-      // Éxito
       setSubmitStatus({
         type: "success",
         message: "¡Solicitud enviada con éxito! Nos pondremos en contacto pronto.",
@@ -132,7 +130,6 @@ export default function ContactForm() {
         especialidad: "",
         mensaje: "",
       });
-      // Limpiar errores
       setErrors({});
     } catch (error) {
       console.error("[ContactForm] Error:", error);

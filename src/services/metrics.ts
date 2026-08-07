@@ -1,11 +1,5 @@
 import { recovenApi } from "./api";
-
-export interface Metric {
-  sede: string;
-  mes: string;
-  aprovechamiento: number;
-  rechazo: number;
-}
+import { type Metric } from "../types/metric";
 
 /**
  * Obtiene las métricas operacionales de las bodegas.
