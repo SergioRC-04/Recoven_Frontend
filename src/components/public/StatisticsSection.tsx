@@ -17,8 +17,20 @@ import { type Metric } from "../../types/metric";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const MONTHS_ORDER = ["Enero", "Febrero", "Marzo", "Abril"];
-
+const MONTHS_ORDER = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
 const COLORS = {
   aprovechamiento: "#10b981",
   rechazo: "#cbd5e1",

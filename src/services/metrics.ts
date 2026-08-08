@@ -1,5 +1,5 @@
 import { recovenApi } from "./api";
-import { type Metric } from "../types/metric";
+import { type Metric, type MetricPayload } from "../types/metric";
 
 /**
  * Obtiene las métricas operacionales de las bodegas.
@@ -15,4 +15,12 @@ export async function fetchMetrics(): Promise<Metric[]> {
  */
 export async function downloadMetricsPDF(): Promise<Blob> {
   return recovenApi.getBlob("/metrics/export_pdf", false);
+}
+
+export async function saveMetric(payload: MetricPayload): Promise<Metric> {
+  return recovenApi.put("/metrics", payload, true);
+}
+
+export async function deleteMetric(sede: string, mes: string, year: number): Promise<void> {
+  return recovenApi.delete("/metrics", { sede, mes, year }, true);
 }

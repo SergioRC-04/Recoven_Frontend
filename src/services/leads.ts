@@ -13,5 +13,13 @@ export async function sendLead(data: LeadFormData): Promise<LeadResponse> {
  * Obtiene todos los leads (requiere autenticación - para dashboard)
  */
 export async function getLeads(): Promise<Lead[]> {
-  return recovenApi.get<Lead[]>("/leads", true);
+  return recovenApi.get("/leads", true);
+}
+
+/**
+ * Exporta los leads en un archivo de excel (requiere autenticación - para dashboard)
+ */
+
+export async function exportLeadsExcel(): Promise<Blob> {
+  return recovenApi.getBlob("/leads/export_excel", true);
 }

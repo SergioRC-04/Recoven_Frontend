@@ -91,7 +91,7 @@ function Header() {
                 role="menu"
               >
                 <Link
-                  to="/admin"
+                  to="/dashboard"
                   className="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-emerald-50 hover:text-emerald-700"
                   onClick={() => setIsSettingsOpen(false)}
                 >
@@ -179,7 +179,7 @@ function Header() {
 
           {/* Enlace a Panel Administrador en móvil */}
           <Link
-            to="/admin"
+            to="/dashboard"
             className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gray-50 p-3 text-sm font-bold text-gray-500 hover:text-emerald-700"
             onClick={() => setIsMobileMenuOpen(false)}
           >
