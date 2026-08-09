@@ -133,4 +133,22 @@ export const recovenApi = {
     });
     return handleResponse(response, true, requiresAuth);
   },
+
+  async patch<T = unknown>(
+    endpoint: string,
+    data: unknown,
+    requiresAuth: boolean = true
+  ): Promise<T> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (requiresAuth) {
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(data),
+    });
+    return handleResponse<T>(response, false, requiresAuth);
+  },
 };

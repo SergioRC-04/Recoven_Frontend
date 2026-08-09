@@ -3,9 +3,16 @@ import { useAuth } from "../hooks/useAuth";
 import LeadsTable from "../components/admin/LeadsTable";
 import MetricsManager from "../components/admin/MetricsManager";
 import DocumentsManager from "../components/admin/DocumentsManager";
-import { FaEnvelopeOpenText, FaChartLine, FaFileUpload, FaSignOutAlt } from "react-icons/fa";
+import {
+  FaEnvelopeOpenText,
+  FaChartLine,
+  FaFileUpload,
+  FaSignOutAlt,
+  FaClipboardList,
+} from "react-icons/fa";
+import PqrsdfTable from "../components/admin/PqrsdfTable";
 
-type Tab = "leads" | "metrics" | "documents";
+type Tab = "leads" | "metrics" | "documents" | "pqrsdf";
 
 export default function Dashboard() {
   const { logout } = useAuth();
@@ -15,6 +22,7 @@ export default function Dashboard() {
     { id: "leads", label: "Solicitudes", icon: FaEnvelopeOpenText },
     { id: "metrics", label: "Actualizar Gráficas", icon: FaChartLine },
     { id: "documents", label: "Envío de Certificados", icon: FaFileUpload },
+    { id: "pqrsdf", label: "PQRSDF", icon: FaClipboardList },
   ];
 
   return (
@@ -60,6 +68,7 @@ export default function Dashboard() {
         {activeTab === "leads" && <LeadsTable />}
         {activeTab === "metrics" && <MetricsManager />}
         {activeTab === "documents" && <DocumentsManager />}
+        {activeTab === "pqrsdf" && <PqrsdfTable />}
       </main>
     </div>
   );

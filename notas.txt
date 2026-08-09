@@ -1,1 +1,30 @@
 Mejorar lo componentes, todo esta muy junto, se pueden separar en varios archivos.
+
+----------------------------------------------
+
+Se puede colocar una animacion en el carusel de clientes que indique el componente se puede arrastrar.
+se pueden colocar logos reales en el carrusel de clientes
+arreglar grafias cuando hay mas de 6 meses
+
+revisar politica de tratamiento de datos
+
+Hacer testeo
+Mejorar ui
+Añadir licencia en github
+
+----------------------------------------------
+
+Se requiere hacer un mapa en la página principal, en la que se van a mostrar las rutas de los trabajadores (recicladores) son más de 60 rutas, en la cual se tiene el barrio, la ruta en si, el nombre, la cedula.
+- Se requiere un mapa con todas rutas para filtrar por barrios y trabajador
+- Mapas por localidad 
+- Se requiere un db con los datos de los trabajadores
+- Se tiene que tener en cuenta el censo
+- Se exporta los certificados de cada trabajador
+- Se exportan los mapas individuales 
+- Se muestran trabajadores viejos
+- Se diferencia trabajadores nuevos no censados
+- Se tiene que hacer el codigo de colores
+* Los que tienen rutas
+* No tienen rutas
+* Nuevos
+* A quitar

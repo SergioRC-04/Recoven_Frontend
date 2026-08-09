@@ -9,6 +9,7 @@ import ScrollToHash from "./components/ScrollToHash";
 import Login from "./pages/Login";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
+import PqrsdfPage from "./pages/PqrsdfPage";
 
 function App() {
   return (
@@ -44,6 +45,17 @@ function App() {
             <>
               <Header />
               <Servicios />
+              <Footer />
+              <WhatsAppButton />
+            </>
+          }
+        />
+        <Route
+          path="/soporte"
+          element={
+            <>
+              <Header />
+              <PqrsdfPage />
               <Footer />
               <WhatsAppButton />
             </>
