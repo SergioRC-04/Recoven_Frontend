@@ -30,6 +30,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      // Limpiar estado y token
+      setToken(null);
+      setUsername("");
+      localStorage.removeItem("token");
+      // Opcional: mostrar un mensaje o notificación
+      // Puedes usar un toast o alert, o simplemente redirigir
+    };
+
+    // Escuchar el evento personalizado
+    window.addEventListener("session-expired", handleSessionExpired);
+
+    return () => {
+      window.removeEventListener("session-expired", handleSessionExpired);
+    };
+  }, []);
+
   const login = async (username: string, password: string) => {
     await loginService({ username, password });
     setUsername(username);
