@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { FaEye, FaEyeSlash, FaSpinner, FaShieldAlt, FaPaperPlane } from "react-icons/fa";
@@ -13,6 +13,18 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Estados para controlar el reenvío
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  // Efecto para el contador de cooldown
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
+
   // Si ya está autenticado, redirigir al dashboard
   if (isAuthenticated) {
     navigate("/dashboard");
@@ -26,13 +38,13 @@ export default function Login() {
     try {
       await login(formData.username, formData.password);
       setStep("2fa");
-      setLoading(false);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
         setError("Credenciales incorrectas");
       }
+    } finally {
       setLoading(false);
     }
   };
@@ -50,19 +62,29 @@ export default function Login() {
       } else {
         setError("Código inválido o expirado");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    // Evita múltiples envíos y respeta cooldown
+    if (resending || cooldown > 0) return;
+
+    setResending(true);
     try {
       await resend2FA();
       alert("Se ha enviado un nuevo código a su correo.");
+      // Iniciar cooldown de 60 segundos después de un envío exitoso
+      setCooldown(60);
     } catch (err: unknown) {
       if (err instanceof Error) {
         alert(err.message);
       } else {
         alert("Error al reenviar el código.");
       }
+    } finally {
+      setResending(false);
     }
   };
 
@@ -158,9 +180,20 @@ export default function Login() {
         <div className="mt-4">
           <button
             onClick={handleResend}
-            className="flex w-full items-center justify-center gap-2 text-sm text-emerald-600 transition hover:text-emerald-800"
+            disabled={resending || cooldown > 0}
+            className="flex w-full items-center justify-center gap-2 text-sm text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <FaPaperPlane /> Reenviar código
+            {resending ? (
+              <>
+                <FaSpinner className="animate-spin" /> Enviando...
+              </>
+            ) : cooldown > 0 ? (
+              `Reenviar (${cooldown}s)`
+            ) : (
+              <>
+                <FaPaperPlane /> Reenviar código
+              </>
+            )}
           </button>
         </div>
       </div>
