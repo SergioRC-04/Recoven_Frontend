@@ -137,8 +137,8 @@ export default function PrivacyPolicyModal({ isOpen, onClose }: PrivacyPolicyMod
               <p className="text-sm leading-relaxed">
                 Para consultar, actualizar, rectificar o solicitar la supresión de sus datos, el
                 titular debe enviar un correo a{" "}
-                <a href="mailto:contacto@recovenesp.com" className="text-blue-600 underline">
-                  contacto@recovenesp.com
+                <a href="mailto:recovenecasasesp@gmail.com" className="text-blue-600 underline">
+                  recovenecasasesp@gmail.com
                 </a>{" "}
                 incluyendo nombre completo, número de identificación, correo de contacto y una
                 descripción clara de la solicitud. La respuesta se dará en un plazo máximo de 10
