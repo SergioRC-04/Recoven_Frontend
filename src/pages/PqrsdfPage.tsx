@@ -174,7 +174,7 @@ export default function PqrsdfPage() {
       </section>
 
       {/* CTA final (opcional, similar a otras páginas) */}
-      <section className="bg-emerald-600 py-12">
+      <section className="bg-primary-green py-12">
         <div className="container mx-auto px-6 text-center text-white">
           <h2 className="text-3xl font-extrabold">¿Necesitas ayuda adicional?</h2>
           <p className="mx-auto mt-3 max-w-xl text-lg">

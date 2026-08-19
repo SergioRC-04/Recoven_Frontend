@@ -24,6 +24,10 @@ import {
   FaClipboardList,
   FaStar,
   FaCogs,
+  FaWarehouse,
+  FaIndustry,
+  FaHome,
+  FaCheck,
 } from "react-icons/fa";
 import CTASection from "../components/public/CTASection";
 
@@ -311,6 +315,118 @@ function Empresa() {
                     Promovemos el compromiso colectivo con el ambiente en comunidades y empresas.
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Bodegas */}
+      <section className="bg-primary-green border-t border-emerald-800/40 py-20 text-white">
+        <div className="container mx-auto max-w-5xl px-6">
+          {/* Encabezado */}
+          <div className="reveal mb-12 text-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-[#16452e] px-4 py-1.5 text-xs font-semibold tracking-wider text-emerald-200 uppercase backdrop-blur-sm">
+              <FaWarehouse className="mr-1 text-emerald-300" /> Infraestructura propia
+            </span>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+              Nuestras Bodegas ECA
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl leading-relaxed text-emerald-100/80">
+              Contamos con instalaciones propias para la clasificación, acopio y disposición final
+              de residuos sólidos.
+            </p>
+          </div>
+
+          {/* Grid de Tarjetas */}
+          <div className="grid gap-8 md:grid-cols-2">
+            {/* Bodega 1 */}
+            <div className="reveal overflow-hidden rounded-2xl border border-emerald-600/30 bg-[#16452e]/90 shadow-2xl backdrop-blur-sm transition-transform duration-300 hover:-translate-y-1">
+              <div
+                className="relative flex h-48 items-center justify-center overflow-hidden"
+                style={{
+                  background: "url(/assets/img/bodega1.webp) center/cover",
+                }}
+              >
+                {/* Overlay oscuro para garantizar contraste del texto sobre la foto */}
+                <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-black/30" />
+
+                <div className="relative z-10 text-center text-white">
+                  <FaHome className="mx-auto mb-2 text-5xl drop-shadow-lg" />
+                  <div className="text-xl font-extrabold tracking-wider text-white uppercase drop-shadow-md">
+                    Bodega 1
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-white">
+                  ECA de Residuos Aprovechables Residenciales
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-emerald-100/80">
+                  Estación de Clasificación y Aprovechamiento especializada en el manejo de residuos
+                  sólidos aprovechables provenientes del sector residencial: viviendas, conjuntos y
+                  urbanizaciones.
+                </p>
+                <ul className="mt-5 space-y-2.5 text-sm text-emerald-50">
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Clasificación y segregación de materiales</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Plástico, cartón, vidrio, papel y metales</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Emisión de certificado de aprovechamiento</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Bodega 2 */}
+            <div className="reveal overflow-hidden rounded-2xl border border-emerald-600/30 bg-[#16452e]/90 shadow-2xl backdrop-blur-sm transition-transform duration-300 hover:-translate-y-1">
+              <div
+                className="relative flex h-48 items-center justify-center overflow-hidden"
+                style={{
+                  background: "url(/assets/img/bodega2.webp) center/cover",
+                }}
+              >
+                {/* Overlay oscuro para garantizar contraste del texto sobre la foto */}
+                <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-black/30" />
+
+                <div className="relative z-10 text-center text-white">
+                  <FaIndustry className="mx-auto mb-2 text-5xl drop-shadow-lg" />
+                  <div className="text-xl font-extrabold tracking-wider text-white uppercase drop-shadow-md">
+                    Bodega 2
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-white">
+                  Disposición Final de Residuos Industriales
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-emerald-100/80">
+                  Instalación especializada en la recepción, clasificación y disposición final de
+                  residuos industriales aprovechables, con capacidad para grandes volúmenes y
+                  vehículos de carga pesada.
+                </p>
+                <ul className="mt-5 space-y-2.5 text-sm text-emerald-50">
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Residuos industriales aprovechables</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Materiales ferrosos y no ferrosos</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <FaCheck className="shrink-0 text-amber-400" />
+                    <span>Certificado de Disposición Final empresarial</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>

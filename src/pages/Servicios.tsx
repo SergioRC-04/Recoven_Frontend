@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import HeroCarouselServices from "../components/public/HeroCarouselServices";
-import StatisticsSection from "../components/public/StatisticsSection";
 import CTASection from "../components/public/CTASection";
+import MapaServicios from "../components/public/MapaServicios";
 import { useServicePreselect } from "../hooks/useServicePreselect";
 import { useNavigate } from "react-router-dom";
 
@@ -18,10 +18,6 @@ import {
   FaCheckCircle,
   FaTruck,
   FaPlusCircle,
-  FaWarehouse,
-  FaIndustry,
-  FaHome,
-  FaCheck,
 } from "react-icons/fa";
 
 export default function Servicios() {
@@ -99,89 +95,6 @@ export default function Servicios() {
               >
                 <FaTruck /> Solicitar este servicio
               </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Código de Colores */}
-      <section className="bg-gray-900 py-16">
-        <div className="container mx-auto max-w-4xl px-6">
-          <div className="reveal mb-10 text-center">
-            <span className="text-sm font-bold tracking-wider text-gray-400 uppercase">
-              Resolución 2184 de 2019
-            </span>
-            <h2 className="mt-2 text-3xl font-bold text-white md:text-4xl">Código de Colores</h2>
-            <p className="mt-2 text-gray-400">Más que una obligación, reciclar es una necesidad.</p>
-          </div>
-          <div className="reveal grid gap-6 md:grid-cols-3">
-            {/* Blanco */}
-            <div
-              className="rounded-lg p-6 text-center text-white"
-              style={{ background: "#3f4d61" }}
-            >
-              <div className="mb-3 h-48 w-full">
-                <img
-                  src="/assets/contenedor-blanco.svg"
-                  alt="Contenedor blanco reciclaje"
-                  className="h-full w-full object-contain"
-                />
-              </div>
-              <h4 className="mb-2 text-base font-bold">Residuos Aprovechables</h4>
-              <ul className="m-0 list-none p-0 text-sm opacity-90">
-                <li>Plástico</li>
-                <li>Cartón</li>
-                <li>Vidrio</li>
-                <li>Papel</li>
-                <li>Metales</li>
-              </ul>
-              <div className="mt-3 text-xs font-bold tracking-widest uppercase opacity-70">
-                Caneca blanca o gris
-              </div>
-            </div>
-            {/* Verde */}
-            <div
-              className="rounded-lg p-6 text-center text-white"
-              style={{ background: "#3f4d61" }}
-            >
-              <div className="mb-3 h-48 w-full">
-                <img
-                  src="/assets/contenedor-verde.svg"
-                  alt="Contenedor verde reciclaje"
-                  className="h-full w-full object-contain"
-                />
-              </div>
-              <h4 className="mb-2 text-base font-bold">Residuos Orgánicos Aprovechables</h4>
-              <ul className="m-0 list-none p-0 text-sm opacity-90">
-                <li>Restos de comida</li>
-                <li>Desechos agrícolas</li>
-              </ul>
-              <div className="mt-3 text-xs font-bold tracking-widest uppercase opacity-70">
-                Caneca verde
-              </div>
-            </div>
-            {/* Negro */}
-            <div
-              className="rounded-lg p-6 text-center text-white"
-              style={{ background: "#3f4d61" }}
-            >
-              <div className="mb-3 h-48 w-full">
-                <img
-                  src="/assets/contenedor-negro.svg"
-                  alt="Contenedor negro reciclaje"
-                  className="h-full w-full object-contain"
-                />
-              </div>
-              <h4 className="mb-2 text-base font-bold">Residuos No Aprovechables</h4>
-              <ul className="m-0 list-none p-0 text-sm opacity-90">
-                <li>Papel higiénico</li>
-                <li>Servilletas</li>
-                <li>Papeles contaminados</li>
-                <li>Papeles metalizados</li>
-              </ul>
-              <div className="mt-3 text-xs font-bold tracking-widest uppercase opacity-70">
-                Caneca negra
-              </div>
             </div>
           </div>
         </div>
@@ -283,106 +196,99 @@ export default function Servicios() {
         </div>
       </section>
 
-      {/* Bodegas */}
-      <section className="bg-white py-20">
+      {/* Mapa de Servicios */}
+      <MapaServicios />
+
+      {/* Código de Colores */}
+      <section className="bg-gray-50 py-16 text-gray-800">
         <div className="container mx-auto max-w-5xl px-6">
+          {/* Encabezado */}
           <div className="reveal mb-12 text-center">
-            <span className="text-primary-green inline-flex items-center gap-2 text-sm font-semibold tracking-wider uppercase">
-              <FaWarehouse className="mr-1" /> Infraestructura propia
+            <span className="rounded-full border border-emerald-200 bg-emerald-100/80 px-3 py-1 text-xs font-bold tracking-wider text-emerald-700 uppercase">
+              Resolución 2184 de 2019
             </span>
-            <h2 className="mt-2 text-3xl font-bold text-gray-800 md:text-4xl">
-              Nuestras Bodegas ECA
+            <h2 className="mt-3 text-3xl font-extrabold text-gray-900 md:text-4xl">
+              Código de Colores
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl leading-relaxed text-gray-600">
-              Contamos con instalaciones propias para la clasificación y disposición final de
-              residuos.
+            <p className="mx-auto mt-2 max-w-lg text-base text-gray-600">
+              Más que una obligación, reciclar es una necesidad. Conoce la separación adecuada de
+              residuos en la fuente.
             </p>
           </div>
-          <div className="grid gap-8 md:grid-cols-2">
-            {/* Bodega 1 */}
-            <div className="reveal overflow-hidden rounded-2xl border border-gray-100 shadow-lg">
-              <div
-                className="flex h-48 items-center justify-center"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(30, 90, 60, 0.75), rgba(45, 122, 80, 0.75)), url(/assets/img/bodega1.webp) center/cover",
-                }}
-              >
-                <div className="text-center text-white">
-                  <FaHome className="mx-auto mb-2 text-5xl opacity-80"></FaHome>
-                  <div className="text-xl font-extrabold tracking-wide uppercase">Bodega 1</div>
+
+          {/* Grid de Tarjetas */}
+          <div className="reveal grid gap-8 md:grid-cols-3">
+            {/* Blanco - Residuos Aprovechables */}
+            <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+              <div>
+                <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-4">
+                  <img
+                    src="/assets/contenedor-blanco.svg"
+                    alt="Contenedor blanco reciclaje"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
-              </div>
-              <div className="bg-white p-6">
-                <h3 className="text-xl font-bold text-gray-800">
-                  ECA de Residuos Aprovechables Residenciales
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-gray-600">
-                  Estación de Clasificación y Aprovechamiento especializada en el manejo de residuos
-                  sólidos aprovechables provenientes del sector residencial: viviendas, conjuntos y
-                  urbanizaciones.
-                </p>
-                <ul className="mt-4 space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center gap-2">
-                    <FaCheck className="text-primary-green"></FaCheck>Clasificación y segregación de
-                    materiales
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheck className="text-primary-green"></FaCheck>Plástico, cartón, vidrio,
-                    papel y metales
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheck className="text-primary-green"></FaCheck>Emisión de certificado de
-                    aprovechamiento
-                  </li>
+                <h4 className="mb-3 text-lg font-bold text-gray-900">Residuos Aprovechables</h4>
+                <ul className="m-0 list-none space-y-1.5 p-0 text-sm text-gray-600">
+                  <li>Plástico</li>
+                  <li>Cartón</li>
+                  <li>Vidrio</li>
+                  <li>Papel</li>
+                  <li>Metales</li>
                 </ul>
+              </div>
+              <div className="mt-6 rounded-lg bg-gray-100 py-2 text-xs font-bold tracking-wider text-gray-700 uppercase">
+                Caneca Blanca
               </div>
             </div>
 
-            {/* Bodega 2 */}
-            <div className="reveal overflow-hidden rounded-2xl border border-gray-100 shadow-lg">
-              <div
-                className="flex h-48 items-center justify-center"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(146, 64, 14, 0.75), rgba(180, 83, 9, 0.75)), url(/assets/img/bodega2.webp) center/cover",
-                }}
-              >
-                <div className="text-center text-white">
-                  <FaIndustry className="mx-auto mb-2 text-5xl opacity-80"></FaIndustry>
-                  <div className="text-xl font-extrabold tracking-wide uppercase">Bodega 2</div>
+            {/* Verde - Residuos Orgánicos */}
+            <div className="flex flex-col justify-between rounded-2xl border border-emerald-100 bg-white p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+              <div>
+                <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-emerald-100/60 bg-emerald-50/50 p-4">
+                  <img
+                    src="/assets/contenedor-verde.svg"
+                    alt="Contenedor verde reciclaje"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
-              </div>
-              <div className="bg-white p-6">
-                <h3 className="text-xl font-bold text-gray-800">
-                  Disposición Final de Residuos Industriales
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-gray-600">
-                  Instalación especializada en la recepción, clasificación y disposición final de
-                  residuos industriales aprovechables, con capacidad para grandes volúmenes y
-                  vehículos de carga pesada.
-                </p>
-                <ul className="mt-4 space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center gap-2">
-                    <FaCheck style={{ color: "#b45309" }}></FaCheck>Residuos industriales
-                    aprovechables
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheck style={{ color: "#b45309" }}></FaCheck>Materiales ferrosos y no
-                    ferrosos
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheck style={{ color: "#b45309" }}></FaCheck>Certificado de Disposición Final
-                    empresarial
-                  </li>
+                <h4 className="mb-3 text-lg font-bold text-gray-900">Orgánicos Aprovechables</h4>
+                <ul className="m-0 list-none space-y-1.5 p-0 text-sm text-gray-600">
+                  <li>Restos de comida</li>
+                  <li>Desechos agrícolas</li>
+                  <li>Cáscaras y frutas</li>
                 </ul>
+              </div>
+              <div className="mt-6 rounded-lg bg-emerald-100/70 py-2 text-xs font-bold tracking-wider text-emerald-800 uppercase">
+                Caneca Verde
+              </div>
+            </div>
+
+            {/* Negro - Residuos No Aprovechables */}
+            <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+              <div>
+                <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-gray-200/60 bg-gray-100/60 p-4">
+                  <img
+                    src="/assets/contenedor-negro.svg"
+                    alt="Contenedor negro reciclaje"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+                <h4 className="mb-3 text-lg font-bold text-gray-900">No Aprovechables</h4>
+                <ul className="m-0 list-none space-y-1.5 p-0 text-sm text-gray-600">
+                  <li>Papel higiénico</li>
+                  <li>Servilletas usadas</li>
+                  <li>Papeles contaminados</li>
+                  <li>Empaques metalizados</li>
+                </ul>
+              </div>
+              <div className="mt-6 rounded-lg bg-gray-800 py-2 text-xs font-bold tracking-wider text-white uppercase">
+                Caneca Negra
               </div>
             </div>
           </div>
         </div>
       </section>
-
-      <StatisticsSection />
 
       <CTASection />
     </main>

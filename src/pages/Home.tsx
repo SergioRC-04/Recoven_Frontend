@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { FaHome, FaIndustry, FaLeaf, FaCertificate, FaArrowRight } from "react-icons/fa";
 import ClientsCarousel from "../components/public/ClientsCarousel";
 import ContactForm from "../components/public/ContactForm";
+import StatisticsSection from "../components/public/StatisticsSection";
 import { useServicePreselect } from "../hooks/useServicePreselect";
 
 function Home() {
@@ -214,6 +215,9 @@ function Home() {
           <ClientsCarousel />
         </div>
       </section>
+
+      {/* ESTADÍSTICAS */}
+      <StatisticsSection />
 
       {/* CONTACTO - FORMULARIO */}
       <ContactForm />
