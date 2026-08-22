@@ -9,10 +9,14 @@ import {
   FaFileUpload,
   FaSignOutAlt,
   FaClipboardList,
+  FaRoute,
+  FaRecycle,
 } from "react-icons/fa";
 import PqrsdfTable from "../components/admin/PqrsdfTable";
+import AdminMicrorrutas from "../components/admin/AdminMicrorrutas";
+import AdminRecyclers from "../components/admin/AdminRecyclers";
 
-type Tab = "leads" | "metrics" | "documents" | "pqrsdf";
+type Tab = "leads" | "metrics" | "documents" | "pqrsdf" | "microrrutas" | "recyclers";
 
 export default function Dashboard() {
   const { logout } = useAuth();
@@ -23,6 +27,8 @@ export default function Dashboard() {
     { id: "metrics", label: "Actualizar Gráficas", icon: FaChartLine },
     { id: "documents", label: "Envío de Certificados", icon: FaFileUpload },
     { id: "pqrsdf", label: "PQRSDF", icon: FaClipboardList },
+    { id: "microrrutas", label: "Microrrutas", icon: FaRoute },
+    { id: "recyclers", label: "Recicladores", icon: FaRecycle },
   ];
 
   return (
@@ -69,6 +75,8 @@ export default function Dashboard() {
         {activeTab === "metrics" && <MetricsManager />}
         {activeTab === "documents" && <DocumentsManager />}
         {activeTab === "pqrsdf" && <PqrsdfTable />}
+        {activeTab === "microrrutas" && <AdminMicrorrutas />}
+        {activeTab === "recyclers" && <AdminRecyclers />}
       </main>
     </div>
   );
