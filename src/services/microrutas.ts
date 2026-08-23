@@ -168,3 +168,23 @@ export async function updateMicrorrutaGeometria(
 export async function deleteMicrorruta(id: number): Promise<void> {
   return recovenApi.delete(`/microrrutas/${id}`, undefined, true);
 }
+
+/**
+ * Descarga el reporte de microrrutas en el formato oficial del SUI (columnas
+ * numeradas 1-13, sin encabezados descriptivos) como archivo .xlsx. Admite
+ * los mismos filtros que getMicrorrutas, para que respete el filtro activo
+ * en la tabla del admin.
+ *
+ * ⚠️ Se asume que recovenApi.getBlob(endpoint, requiresAuth) sigue el mismo
+ * patrón posicional que el resto de métodos del cliente (get/post/etc.).
+ * Si la firma real difiere, ajustar esta llamada.
+ *
+ * Controller: GET /microrrutas/exportar-excel  (JwtAuthGuard)
+ */
+export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
+  if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  const query = params.toString();
+  return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
+}

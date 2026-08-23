@@ -1,8 +1,19 @@
 // components/admin/AdminMicrorrutas.tsx
 import { useEffect, useRef, useState } from "react";
-import { FaDrawPolygon, FaTimes, FaEraser } from "react-icons/fa";
+import {
+  FaDrawPolygon,
+  FaTimes,
+  FaEraser,
+  FaFileDownload,
+  FaFileExcel,
+  FaSpinner,
+} from "react-icons/fa";
 import { getLocalidadesList, getBarriosGeoJson, getViasGeoJson } from "../../services/geo";
-import { getMicrorrutas, deleteMicrorruta } from "../../services/microrutas";
+import {
+  getMicrorrutas,
+  deleteMicrorruta,
+  exportarMicrorrutasExcel,
+} from "../../services/microrutas";
 import type {
   Localidad,
   Barrio,
@@ -19,6 +30,10 @@ import {
 import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
 import MicrorrutasTable from "./MicrorrutasTable";
 import MicrorrutaFormModal from "./MicrorrutaFormModal";
+import {
+  generarReporteMicrorruta,
+  generarReporteMicrorrutas,
+} from "../../lib/microrrutaReportePdf";
 
 type FormModalState =
   | { mode: "create"; geojson: LineStringGeoJson; distanciaTotalKm: number }
@@ -40,11 +55,10 @@ export default function AdminMicrorrutas() {
     null
   );
 
-  // GeoJSON de TODAS las vías (sin filtrar por localidad/barrio) — capa de
-  // referencia y fuente del snap al dibujar. A diferencia de barrios, esto
-  // no depende de ningún filtro: el snap es una guía que debe estar
-  // disponible siempre que se cree o edite una microrruta, sin importar si
-  // el usuario aplicó algún filtro de ubicación.
+  // GeoJSON de vías — capa de referencia y fuente del snap al dibujar.
+  // Filtradas por localidad/barrio cuando hay un filtro activo; si no hay
+  // ninguno pero se está dibujando o editando, se cargan todas las vías de
+  // la ciudad como respaldo (ver el efecto correspondiente más abajo).
   const [viasGeo, setViasGeo] = useState<GeoJsonFeatureCollection<ViaProperties> | null>(null);
 
   const [microrrutasGeo, setMicrorrutasGeo] = useState<MicrorrutasGeoJson | null>(null);
@@ -56,6 +70,13 @@ export default function AdminMicrorrutas() {
 
   const [drawing, setDrawing] = useState(false);
   const [editingGeometriaId, setEditingGeometriaId] = useState<number | null>(null);
+  // id de la microrruta cuyo PDF se está generando (muestra spinner en su fila).
+  const [generandoReporteId, setGenerandoReporteId] = useState<number | null>(null);
+  // Progreso del PDF combinado ("Descargar todo"). null = no está corriendo.
+  const [generandoTodo, setGenerandoTodo] = useState<{ actual: number; total: number } | null>(
+    null
+  );
+  const [descargandoExcel, setDescargandoExcel] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
 
   // Contador que se incrementa para forzar una recarga de microrrutas sin
@@ -106,14 +127,25 @@ export default function AdminMicrorrutas() {
       .catch((err) => console.error("Error cargando barrios:", err));
   }, [selectedLocalidad]);
 
-  // Todas las vías, una sola vez al entrar a la sección — independiente de
-  // cualquier filtro. El snap al dibujar debe funcionar siempre, incluso
-  // sin localidad ni barrio seleccionados.
+  // Vías: filtradas por el filtro de ubicación activo cuando lo hay. Si no
+  // hay ningún filtro pero se está dibujando o editando un trazo, se traen
+  // todas las vías de la ciudad como respaldo — es el único caso en que
+  // tiene sentido cargar el set completo (sin eso, no habría nada a qué
+  // engancharse con el snap). Sin filtro y sin estar dibujando/editando, no
+  // se pide nada (la capa igual está oculta en ese caso).
   useEffect(() => {
-    getViasGeoJson()
+    if (!selectedLocalidad && !isBusy) return;
+
+    const filtros = selectedBarrio
+      ? { localidadCod: selectedLocalidad, barrioCod: selectedBarrio }
+      : selectedLocalidad
+        ? { localidadCod: selectedLocalidad }
+        : undefined; // sin filtro, dibujando: todas las vías
+
+    getViasGeoJson(filtros)
       .then(setViasGeo)
       .catch((err) => console.error("Error cargando vías:", err));
-  }, []);
+  }, [selectedLocalidad, selectedBarrio, isBusy]);
 
   // Cambia la localidad y limpia de inmediato los datos que dependían de la
   // anterior (barrios, barrio elegido). Vías NO se limpia aquí: no depende
@@ -178,6 +210,80 @@ export default function AdminMicrorrutas() {
     } catch (error) {
       console.error("Error eliminando microrruta:", error);
       alert("No se pudo eliminar la microrruta.");
+    }
+  };
+
+  const handleGenerarReporte = async (mr: MicrorrutaProperties) => {
+    // La geometría vive en el feature GeoJSON, no en MicrorrutaProperties
+    // (que solo trae los atributos) — se busca en los datos ya cargados en
+    // vez de pedirla de nuevo al backend.
+    const feature = microrrutasGeo?.features.find((f) => f.properties.id === mr.id);
+    if (!feature) {
+      alert("No se encontró la geometría de la microrruta. Recarga la página e intenta de nuevo.");
+      return;
+    }
+    setGenerandoReporteId(mr.id);
+    try {
+      // La geometría de una microrruta siempre es LineString (confirmado en
+      // el schema de Prisma: geom Unsupported("geometry(LineString, 9377)")),
+      // pero el tipo del feature es el genérico GeoJsonGeometry — de ahí el cast.
+      await generarReporteMicrorruta(mr, feature.geometry as LineStringGeoJson);
+    } catch (error) {
+      console.error("Error generando el reporte PDF:", error);
+      alert("No se pudo generar el PDF de la microrruta.");
+    } finally {
+      setGenerandoReporteId(null);
+    }
+  };
+
+  const handleGenerarReporteTodas = async () => {
+    const features = microrrutasGeo?.features ?? [];
+    if (features.length === 0) {
+      alert("No hay microrrutas para exportar con el filtro actual.");
+      return;
+    }
+    // Respeta el filtro de localidad/barrio activo en la tabla — "todo" es
+    // "todo lo que se está viendo ahora mismo", no necesariamente todas las
+    // microrrutas del sistema.
+    const rutas = features.map((f) => ({
+      microrruta: f.properties,
+      geometry: f.geometry as LineStringGeoJson,
+    }));
+
+    setGenerandoTodo({ actual: 0, total: rutas.length });
+    try {
+      await generarReporteMicrorrutas(rutas, (actual, total) =>
+        setGenerandoTodo({ actual, total })
+      );
+    } catch (error) {
+      console.error("Error generando el reporte de todas las microrrutas:", error);
+      alert("No se pudo generar el PDF combinado.");
+    } finally {
+      setGenerandoTodo(null);
+    }
+  };
+
+  const handleDescargarExcel = async () => {
+    setDescargandoExcel(true);
+    try {
+      // Mismo filtro activo que la tabla y que "Descargar todo" (PDF).
+      const blob = await exportarMicrorrutasExcel({
+        localidadCod: selectedLocalidad || undefined,
+        barrioCod: selectedBarrio || undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `microrrutas-${new Date().toISOString().split("T")[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error descargando el Excel de microrrutas:", error);
+      alert("No se pudo descargar el archivo Excel.");
+    } finally {
+      setDescargandoExcel(false);
     }
   };
 
@@ -289,10 +395,44 @@ export default function AdminMicrorrutas() {
           microrrutas={microrrutasList}
           editingGeometriaId={editingGeometriaId}
           disabled={isBusy}
+          generandoReporteId={generandoReporteId}
           onEdit={handleEdit}
           onEditGeometria={(mr) => setEditingGeometriaId(mr.id)}
           onDelete={handleDelete}
+          onGenerarReporte={handleGenerarReporte}
         />
+      )}
+
+      {!loading && microrrutasList.length > 0 && (
+        <div className="flex items-center justify-end gap-3">
+          {generandoTodo && (
+            <span className="text-xs font-semibold text-gray-500">
+              Generando {generandoTodo.actual} de {generandoTodo.total}...
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleDescargarExcel}
+            disabled={isBusy || descargandoExcel}
+            title="Descargar el reporte de microrrutas en formato SUI (.xlsx)"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+            Descargar Excel
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerarReporteTodas}
+            disabled={isBusy || generandoTodo !== null}
+            title="Descargar un solo PDF con una hoja por cada microrruta mostrada"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
+            Descargar todo ({microrrutasList.length})
+          </button>
+          {/* Espacio para el botón del segundo documento exportable, una vez
+              se defina — mismo patrón: estado de progreso + botón. */}
+        </div>
       )}
 
       {formModalState?.mode === "create" && (

@@ -1,5 +1,12 @@
 // components/admin/MicrorrutasTable.tsx
-import { FaEdit, FaTrash, FaDrawPolygon, FaCheckCircle } from "react-icons/fa";
+import {
+  FaEdit,
+  FaTrash,
+  FaDrawPolygon,
+  FaCheckCircle,
+  FaFilePdf,
+  FaSpinner,
+} from "react-icons/fa";
 import {
   TIPO_MICRORRUTA_LABELS,
   TIPO_BARRIDO_LABELS,
@@ -10,18 +17,24 @@ interface MicrorrutasTableProps {
   microrrutas: MicrorrutaProperties[];
   editingGeometriaId: number | null;
   disabled: boolean;
+  // id de la microrruta cuyo PDF se está generando actualmente (muestra un
+  // spinner en su fila). null = ninguna en proceso.
+  generandoReporteId: number | null;
   onEdit: (microrruta: MicrorrutaProperties) => void;
   onEditGeometria: (microrruta: MicrorrutaProperties) => void;
   onDelete: (microrruta: MicrorrutaProperties) => void;
+  onGenerarReporte: (microrruta: MicrorrutaProperties) => void;
 }
 
 export default function MicrorrutasTable({
   microrrutas,
   editingGeometriaId,
   disabled,
+  generandoReporteId,
   onEdit,
   onEditGeometria,
   onDelete,
+  onGenerarReporte,
 }: MicrorrutasTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -102,6 +115,22 @@ export default function MicrorrutasTable({
                         >
                           <FaTrash />
                         </button>
+                        <span className="text-xs text-gray-300">|</span>
+                        <button
+                          onClick={() => onGenerarReporte(mr)}
+                          disabled={disabled || generandoReporteId === mr.id}
+                          title="Generar hoja de ruta (PDF)"
+                          className="text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {generandoReporteId === mr.id ? (
+                            <FaSpinner className="animate-spin" />
+                          ) : (
+                            <FaFilePdf />
+                          )}
+                        </button>
+                        {/* Espacio reservado para el segundo documento exportable
+                            (pendiente de definir). Agregar aquí un botón más,
+                            mismo patrón que el de arriba. */}
                       </div>
                     </td>
                   </tr>

@@ -126,7 +126,7 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
       .sort((a, b) => a - b)
       .join("-");
 
-    const payload: MicrorrutaFormValues = {
+    const payload = {
       ...values,
       diasFrecuencia,
       dirInicio: sinHorariosNiDirecciones ? "" : values.dirInicio,
@@ -135,9 +135,10 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
       horaFin: sinHorariosNiDirecciones ? "" : values.horaFin,
       distPavimentada: sinDistanciasViales ? 0 : distPavimentadaDerivada,
       distNoPavimentada: sinDistanciasViales ? 0 : values.distNoPavimentada,
-      // Tipo de barrido solo es relevante para tipo 2/3; para el resto se
-      // envía el valor por defecto (1) sin exponerlo en el formulario.
-      tipoBarrido: mostrarTipoBarrido ? values.tipoBarrido : 1,
+      // Tipo de barrido (campo 13 del SUI) solo aplica a tipo 2 y 3 — para
+      // el resto se envía null, no un valor por defecto que en el reporte
+      // Excel se vería como un dato real cuando en realidad no aplica.
+      tipoBarrido: mostrarTipoBarrido ? values.tipoBarrido : null,
     };
 
     setLoading(true);

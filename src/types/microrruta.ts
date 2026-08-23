@@ -264,8 +264,13 @@ export interface MicrorrutaFormValues {
   tipoBarrido: number;
 }
 
-export interface MicrorrutaCreatePayload extends MicrorrutaFormValues {
+export interface MicrorrutaCreatePayload extends Omit<MicrorrutaFormValues, "tipoBarrido"> {
   geojson: LineStringGeoJson;
+  // number | null (no solo number como en el estado del formulario): el
+  // campo 13 del SUI ("Tipo de barrido") solo aplica a tipo 2 y 3 — para el
+  // resto se envía null, no un valor por defecto que se vería como un dato
+  // real en el reporte Excel (antes se enviaba 1 por error).
+  tipoBarrido: number | null;
 }
 
 // El backend implementó PUT /admin/microrrutas/:id con UpdateMicrorrutaDto
@@ -273,7 +278,9 @@ export interface MicrorrutaCreatePayload extends MicrorrutaFormValues {
 // son opcionales, incluyendo geojson. El servicio (services/microrrutas.ts)
 // usa este tipo sin geojson para editar solo los datos del SUI, y
 // MicrorrutaGeometriaPayload para editar solo la geometría.
-export type MicrorrutaUpdatePayload = MicrorrutaFormValues;
+export type MicrorrutaUpdatePayload = Omit<MicrorrutaFormValues, "tipoBarrido"> & {
+  tipoBarrido: number | null;
+};
 
 export interface MicrorrutaGeometriaPayload {
   geojson: LineStringGeoJson;
