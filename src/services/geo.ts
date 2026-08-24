@@ -54,3 +54,29 @@ export async function getBarriosList(localidadCod?: string): Promise<Barrio[]> {
     localidadCod: f.properties.localidadCod,
   }));
 }
+
+// Añadir a services/geo.ts
+
+export async function exportarLocalidades(formato: "geojson" | "shp"): Promise<Blob> {
+  return recovenApi.getBlob(`/geo-territorio/localidades/exportar?formato=${formato}`, false);
+}
+
+export async function exportarBarrios(
+  formato: "geojson" | "shp",
+  localidadCod?: string
+): Promise<Blob> {
+  const params = new URLSearchParams({ formato });
+  if (localidadCod) params.append("localidadCod", localidadCod);
+  return recovenApi.getBlob(`/geo-territorio/barrios/exportar?${params.toString()}`, false);
+}
+
+export async function exportarVias(
+  formato: "geojson" | "shp",
+  localidadCod?: string,
+  barrioCod?: string
+): Promise<Blob> {
+  const params = new URLSearchParams({ formato });
+  if (localidadCod) params.append("localidadCod", localidadCod);
+  if (barrioCod) params.append("barrioCod", barrioCod);
+  return recovenApi.getBlob(`/geo-territorio/vias/exportar?${params.toString()}`, false);
+}

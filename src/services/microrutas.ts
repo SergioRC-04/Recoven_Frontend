@@ -188,3 +188,20 @@ export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Pr
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
 }
+
+/**
+ * Descarga la capa de microrrutas (geometría nativa en EPSG:9377, sin
+ * reproyectar) en GeoJSON o Shapefile, para revisar en QGIS/ArcGIS. Admite
+ * los mismos filtros que getMicrorrutas.
+ *
+ * Controller: GET /microrrutas/exportar-capa  (JwtAuthGuard)
+ */
+export async function exportarMicrorrutasCapa(
+  formato: "geojson" | "shp",
+  filters?: MicrorrutasFilters
+): Promise<Blob> {
+  const params = new URLSearchParams({ formato });
+  if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
+  if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
+}

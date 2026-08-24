@@ -6,6 +6,7 @@ import {
   FaEraser,
   FaFileDownload,
   FaFileExcel,
+  FaLayerGroup,
   FaSpinner,
 } from "react-icons/fa";
 import { getLocalidadesList, getBarriosGeoJson, getViasGeoJson } from "../../services/geo";
@@ -30,6 +31,7 @@ import {
 import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
 import MicrorrutasTable from "./MicrorrutasTable";
 import MicrorrutaFormModal from "./MicrorrutaFormModal";
+import ExportarCapasModal from "./ExportarCapasModal";
 import {
   generarReporteMicrorruta,
   generarReporteMicrorrutas,
@@ -77,6 +79,7 @@ export default function AdminMicrorrutas() {
     null
   );
   const [descargandoExcel, setDescargandoExcel] = useState(false);
+  const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
 
   // Contador que se incrementa para forzar una recarga de microrrutas sin
@@ -430,9 +433,32 @@ export default function AdminMicrorrutas() {
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
             Descargar todo ({microrrutasList.length})
           </button>
-          {/* Espacio para el botón del segundo documento exportable, una vez
-              se defina — mismo patrón: estado de progreso + botón. */}
+          <button
+            type="button"
+            onClick={() => setMostrarExportarCapas(true)}
+            disabled={isBusy}
+            title="Exportar capas en GeoJSON o Shapefile para QGIS/ArcGIS"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FaLayerGroup /> Exportar capas
+          </button>
         </div>
+      )}
+
+      {mostrarExportarCapas && (
+        <ExportarCapasModal
+          capas={[
+            { id: "localidades", nombre: "Localidades", total: localidades.length },
+            { id: "barrios", nombre: "Barrios", total: barriosGeo?.features.length ?? 0 },
+            { id: "vias", nombre: "Vías", total: viasGeo?.features.length ?? 0 },
+            { id: "microrrutas", nombre: "Microrrutas", total: microrrutasList.length },
+          ]}
+          filtros={{
+            localidadCod: selectedLocalidad || undefined,
+            barrioCod: selectedBarrio || undefined,
+          }}
+          onClose={() => setMostrarExportarCapas(false)}
+        />
       )}
 
       {formModalState?.mode === "create" && (
