@@ -36,6 +36,21 @@ export const RECYCLER_TABS: { id: RecyclerTab; label: string }[] = [
   { id: "desvinculados", label: "Desvinculados (Histórico)" },
 ];
 
+// Los 6 reportes exportables — distintos de RecyclerTab: no incluyen
+// "nuevos"/"a_quitar" (no se pidieron como export) pero sí "censados"/
+// "no_censados" (que no son pestañas de la tabla, solo filtros de export).
+export type TipoExportRecyclers =
+  "todos" | "desvinculados" | "censados" | "no_censados" | "con_ruta" | "sin_ruta";
+
+export const TIPOS_EXPORT_RECYCLERS: { tipo: TipoExportRecyclers; label: string }[] = [
+  { tipo: "todos", label: "Todos (activos)" },
+  { tipo: "desvinculados", label: "Desvinculados" },
+  { tipo: "censados", label: "Censados" },
+  { tipo: "no_censados", label: "Sin censar" },
+  { tipo: "con_ruta", label: "Con ruta" },
+  { tipo: "sin_ruta", label: "Sin ruta" },
+];
+
 // ============================================================
 // RELACIONES — forma en que el backend las devuelve mapeadas
 // ============================================================

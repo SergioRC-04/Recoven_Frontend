@@ -9,6 +9,8 @@ import OSM from "ol/source/OSM";
 import GeoJSON from "ol/format/GeoJSON";
 import Draw, { type DrawEvent } from "ol/interaction/Draw";
 import Snap from "ol/interaction/Snap";
+import Collection from "ol/Collection";
+import type OlFeature from "ol/Feature";
 import { fromLonLat } from "ol/proj";
 import { Style, Stroke, Fill, Circle as CircleStyle } from "ol/style";
 import { isEmpty } from "ol/extent";
@@ -106,6 +108,19 @@ export default function MicrorrutaMapEditor({
   // existente (mismo mecanismo que crear una nueva, no Modify — ver más abajo).
   const editDrawInteractionRef = useRef<Draw | null>(null);
   const snapInteractionRef = useRef<Snap | null>(null);
+  // Colección estable de features para el Snap — NO se ata directamente al
+  // VectorSource de la capa de vías. Hay un bug conocido de OpenLayers
+  // (openlayers/openlayers#9034, #8107): si Snap se ata con `source` y ese
+  // source se reemplaza o se le hace clear()+addFeatures() mientras el Snap
+  // ya existe, su índice interno queda desactualizado o parcial (snapping
+  // inconsistente). Usando `features` (una Collection) en vez de `source`,
+  // Snap sí refleja correctamente los cambios futuros a esa misma colección
+  // — es el workaround confirmado en esos issues.
+  const viasSnapFeaturesRef = useRef<Collection<OlFeature> | null>(null);
+  // Espejo de "hay un trazo en curso" en un ref, para poder leerlo desde el
+  // efecto que refresca las vías sin declararlo como dependencia (evita que
+  // ese efecto se dispare de más cada vez que se empieza/termina a dibujar).
+  const dibujandoOEditandoRef = useRef(false);
 
   const [savingGeometria, setSavingGeometria] = useState(false);
   const [geometriaError, setGeometriaError] = useState<string | null>(null);
@@ -134,6 +149,7 @@ export default function MicrorrutaMapEditor({
     viasLayerRef.current = viasLayer;
     microrrutasLayerRef.current = microrrutasLayer;
     pendingLayerRef.current = pendingLayer;
+    viasSnapFeaturesRef.current = new Collection<OlFeature>();
 
     const map = new Map({
       target: mapContainer.current,
@@ -148,6 +164,12 @@ export default function MicrorrutaMapEditor({
       mapRef.current = null;
     };
   }, []);
+
+  // Mantiene el ref de "hay un trazo en curso" sincronizado, para leerlo
+  // desde el efecto de vías sin declararlo como dependencia.
+  useEffect(() => {
+    dibujandoOEditandoRef.current = drawing || editingGeometriaId !== null;
+  }, [drawing, editingGeometriaId]);
 
   // Refrescar la fuente de barrios cuando llega nueva data del padre.
   useEffect(() => {
@@ -172,10 +194,13 @@ export default function MicrorrutaMapEditor({
     }
   }, [barriosGeoJson]);
 
-  // Refrescar la fuente de vías cuando llega nueva data del padre. Esta
-  // misma fuente es la que usa la interacción Snap (ver más abajo).
+  // Refrescar la fuente de vías cuando llega nueva data del padre. La capa
+  // visual (viasLayer) se puede reemplazar libremente — el reemplazo de
+  // VectorSource solo afecta el dibujo en pantalla. La Collection que usa
+  // Snap (viasSnapFeaturesRef) es aparte, ver el comentario donde se declara.
   useEffect(() => {
     const viasLayer = viasLayerRef.current;
+    const snapFeatures = viasSnapFeaturesRef.current;
     if (!viasLayer) return;
 
     if (!viasGeoJson) {
@@ -184,13 +209,27 @@ export default function MicrorrutaMapEditor({
     }
 
     try {
-      const source = new VectorSource({
-        features: new GeoJSON({
-          dataProjection: DATA_PROJ,
-          featureProjection: VIEW_PROJ,
-        }).readFeatures(viasGeoJson),
-      });
-      viasLayer.setSource(source);
+      const features = new GeoJSON({
+        dataProjection: DATA_PROJ,
+        featureProjection: VIEW_PROJ,
+      }).readFeatures(viasGeoJson);
+      viasLayer.setSource(new VectorSource({ features }));
+
+      if (snapFeatures) {
+        // Solo se vacía la colección cuando NO hay un trazo en curso — los
+        // filtros de localidad/barrio están bloqueados mientras se dibuja,
+        // así que las vías solo pueden pasar de "vacías" a "pobladas"
+        // durante un trazo (nunca cambiar de un set a otro), por lo que
+        // limpiar aquí en medio de un trazo nunca hace falta y evita
+        // vaciar el índice de un Snap que ya está activo.
+        if (!dibujandoOEditandoRef.current) {
+          snapFeatures.clear();
+        }
+        const yaPresentes = new Set(snapFeatures.getArray());
+        features.forEach((f) => {
+          if (!yaPresentes.has(f)) snapFeatures.push(f);
+        });
+      }
     } catch (error) {
       console.error("Error interpretando el GeoJSON de vías:", error);
     }
@@ -396,11 +435,15 @@ export default function MicrorrutaMapEditor({
     drawInteractionRef.current = draw;
 
     // Snap debe agregarse DESPUÉS de Draw para interceptar correctamente sus
-    // eventos de puntero. Si aún no hay vías cargadas, queda sin efecto
-    // (fuente vacía) hasta que lleguen.
-    const viasSource = viasLayerRef.current?.getSource();
-    if (viasSource) {
-      const snap = new Snap({ source: viasSource, pixelTolerance: 15 });
+    // eventos de puntero. Se ata a la Collection estable (viasSnapFeaturesRef),
+    // no al VectorSource de la capa visual — ver el comentario donde se
+    // declara esa Collection. Como es estable, este efecto YA NO depende de
+    // viasGeoJson: si las vías llegan después de empezar a dibujar, Snap las
+    // ve solo, sin necesidad de recrear Draw (que borraría el boceto en
+    // curso — este era el bug real que se estaba reportando).
+    const snapFeatures = viasSnapFeaturesRef.current;
+    if (snapFeatures) {
+      const snap = new Snap({ features: snapFeatures, pixelTolerance: 15 });
       map.addInteraction(snap);
       snapInteractionRef.current = snap;
     }
@@ -414,7 +457,7 @@ export default function MicrorrutaMapEditor({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing, viasGeoJson]);
+  }, [drawing]);
 
   // Interacción de dibujo para REDIBUJAR el trazo de una microrruta existente
   // — en vez de arrastrar vértices sobre la línea original (Modify), se
@@ -463,10 +506,11 @@ export default function MicrorrutaMapEditor({
     map.addInteraction(draw);
     editDrawInteractionRef.current = draw;
 
-    // Snap DESPUÉS de Draw, mismo motivo que en la interacción de creación.
-    const viasSource = viasLayerRef.current?.getSource();
-    if (viasSource) {
-      const snap = new Snap({ source: viasSource, pixelTolerance: 15 });
+    // Snap DESPUÉS de Draw, sobre la misma Collection estable — mismo
+    // motivo que en la interacción de creación (ver ese comentario).
+    const snapFeatures = viasSnapFeaturesRef.current;
+    if (snapFeatures) {
+      const snap = new Snap({ features: snapFeatures, pixelTolerance: 15 });
       map.addInteraction(snap);
       snapInteractionRef.current = snap;
     }
@@ -479,7 +523,7 @@ export default function MicrorrutaMapEditor({
         snapInteractionRef.current = null;
       }
     };
-  }, [editingGeometriaId, viasGeoJson]);
+  }, [editingGeometriaId]);
 
   // Cancela la edición: descarta el trazo de reemplazo (si había uno) y
   // avisa al padre para salir del modo edición. El reseteo del estado local

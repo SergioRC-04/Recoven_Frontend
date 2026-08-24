@@ -7,6 +7,8 @@ import {
   FaUserSlash,
   FaPlus,
   FaSearch,
+  FaFileExcel,
+  FaIdCard,
 } from "react-icons/fa";
 import {
   getRecyclersByTab,
@@ -17,6 +19,8 @@ import {
 import { RECYCLER_TABS, type Recycler, type RecyclerTab } from "../../types/recycler";
 import RecyclersTable from "./RecyclersTable";
 import RecyclerFormModal from "./RecyclerFormModal";
+import ExportarRecyclersModal from "./ExportarRecyclersModal";
+import ExportarCertificadoModal from "./ExportarCertificadoModal";
 
 interface KpiCardProps {
   label: string;
@@ -57,6 +61,8 @@ export default function AdminRecyclers() {
 
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [editingRecycler, setEditingRecycler] = useState<EditingState>(null);
+  const [mostrarExportar, setMostrarExportar] = useState(false);
+  const [mostrarExportarCertificado, setMostrarExportarCertificado] = useState(false);
 
   // KPIs derivados de "todos" + "desvinculados".
   const [kpis, setKpis] = useState({ total: 0, censados: 0, sinCensar: 0, desvinculados: 0 });
@@ -88,6 +94,10 @@ export default function AdminRecyclers() {
   }, [searchInput]);
 
   // Tabla de recicladores — se recarga al cambiar tab, search o tableKey.
+  // El orden estable (por nombre, no por updatedAt) lo garantiza el
+  // backend (recyclers.service.ts findAll: orderBy nombreCompleto asc) —
+  // así un refresh completo tras activar/desactivar el censo no reordena
+  // la lista ni manda el registro tocado al principio.
   useEffect(() => {
     const requestId = ++tableRequestIdRef.current;
 
@@ -177,13 +187,32 @@ export default function AdminRecyclers() {
             Censo, clasificación y asignación de rutas de los recicladores de oficio.
           </p>
         </div>
-        <button
-          onClick={() => setEditingRecycler("new")}
-          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
-        >
-          <FaPlus /> Nuevo Reciclador
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMostrarExportar(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200"
+          >
+            <FaFileExcel /> Exportar
+          </button>
+          <button
+            onClick={() => setMostrarExportarCertificado(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200"
+          >
+            <FaIdCard /> Exportar certificado
+          </button>
+          <button
+            onClick={() => setEditingRecycler("new")}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
+          >
+            <FaPlus /> Nuevo Reciclador
+          </button>
+        </div>
       </div>
+
+      {mostrarExportar && <ExportarRecyclersModal onClose={() => setMostrarExportar(false)} />}
+      {mostrarExportarCertificado && (
+        <ExportarCertificadoModal onClose={() => setMostrarExportarCertificado(false)} />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard

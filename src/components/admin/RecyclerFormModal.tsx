@@ -1,7 +1,7 @@
 // components/admin/RecyclerFormModal.tsx
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { FaTimes, FaSpinner, FaRecycle } from "react-icons/fa";
-import { createRecycler, updateRecycler } from "../../services/recyclers";
+import { createRecycler, updateRecycler, exportarCertificado } from "../../services/recyclers";
 import { getMicrorrutasList } from "../../services/microrutas";
 import { getBarriosList } from "../../services/geo";
 import type { Barrio } from "../../types/geo";
@@ -73,6 +73,23 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
     );
   };
 
+  const descargarCertificado = async (id: number, nombreCompleto: string) => {
+    try {
+      const blob = await exportarCertificado(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `certificado-${nombreCompleto.replace(/\s+/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error descargando certificado:", error);
+      alert("No se pudo descargar el certificado.");
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -81,18 +98,36 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
       return;
     }
     setLoading(true);
+
+    let creado: Recycler | null = null;
     try {
       if (props.mode === "edit") {
         await updateRecycler(props.recycler.id, values);
       } else {
-        await createRecycler(values);
+        creado = await createRecycler(values);
       }
-      onSaved();
-      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al guardar el reciclador.");
-    } finally {
       setLoading(false);
+      return;
+    }
+
+    // A partir de aquí ya no se debe volver a llamar ningún setState de
+    // este componente — onClose() lo desmonta. Por eso el paso del
+    // certificado, que puede tardar (await de la descarga), queda fuera
+    // del try/catch/finally de arriba en vez de en un finally.
+    setLoading(false);
+    onSaved();
+    onClose();
+
+    if (creado) {
+      if (
+        confirm(
+          `Reciclador creado correctamente. ¿Deseas descargar su certificado de vinculación ahora?`
+        )
+      ) {
+        await descargarCertificado(creado.id, creado.nombreCompleto);
+      }
     }
   };
 

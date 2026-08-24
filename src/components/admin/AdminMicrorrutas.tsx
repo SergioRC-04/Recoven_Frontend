@@ -347,7 +347,16 @@ export default function AdminMicrorrutas() {
           <FaEraser /> Limpiar filtros
         </button>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMostrarExportarCapas(true)}
+            disabled={isBusy}
+            title="Exportar capas en GeoJSON o Shapefile para QGIS/ArcGIS"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FaLayerGroup /> Exportar capas
+          </button>
           {drawing ? (
             <button
               onClick={() => setDrawing(false)}
@@ -432,15 +441,6 @@ export default function AdminMicrorrutas() {
           >
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
             Descargar todo ({microrrutasList.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setMostrarExportarCapas(true)}
-            disabled={isBusy}
-            title="Exportar capas en GeoJSON o Shapefile para QGIS/ArcGIS"
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FaLayerGroup /> Exportar capas
           </button>
         </div>
       )}

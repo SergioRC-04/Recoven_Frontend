@@ -5,6 +5,7 @@ import type {
   RecyclerTab,
   RecyclerCreatePayload,
   RecyclerUpdatePayload,
+  TipoExportRecyclers,
 } from "../types/recycler";
 
 // Todos los endpoints del módulo comparten la misma base /recyclers.
@@ -76,4 +77,25 @@ export async function desvincularRecycler(id: number): Promise<void> {
  */
 export async function reactivarRecycler(id: number): Promise<Recycler> {
   return recovenApi.patch(`/recyclers/${id}/reactivar`, {}, true);
+}
+
+/**
+ * Descarga el Excel de recicladores para el reporte indicado (con colores
+ * de Censo/Rutas/Clasificación aplicados en el backend). "desvinculados" es
+ * el único tipo sin columna de Clasificación.
+ *
+ * Controller: GET /recyclers/exportar?tipo=...  (JwtAuthGuard)
+ */
+export async function exportarRecyclers(tipo: TipoExportRecyclers): Promise<Blob> {
+  return recovenApi.getBlob(`/recyclers/exportar?tipo=${tipo}`, true);
+}
+
+/**
+ * Descarga el certificado de vinculación de un reciclador (PDF, 2 copias
+ * por hoja para recortar).
+ *
+ * Controller: GET /recyclers/:id/certificado  (JwtAuthGuard)
+ */
+export async function exportarCertificado(id: number): Promise<Blob> {
+  return recovenApi.getBlob(`/recyclers/${id}/certificado`, true);
 }
