@@ -86,6 +86,10 @@ export interface Recycler {
   estadoVinculacion: EstadoVinculacion;
   barrios: BarrioResumen[];
   microrrutas: MicrorrutaResumen[];
+  // Fecha de ingreso real del reciclador a la organización — editable,
+  // distinta de createdAt (que es el timestamp de auditoría del registro).
+  // Default en BD: 1 de enero del año en curso.
+  fechaIngreso: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,7 +113,9 @@ export interface RecyclerFormValues {
   nombreCompleto: string;
   censado: boolean;
   clasificacion: Clasificacion;
-  // Se envían al backend como arrays de IDs (CreateRecyclerDto/UpdateRecyclerDto)
+  // Fecha de ingreso — se envía como "YYYY-MM-DD". El backend convierte a Date.
+  fechaIngreso: string;
+  // Se envían al backend como arrays de IDs
   barriosIds: string[];
   microrrutasIds: number[];
 }
@@ -124,12 +130,17 @@ export type RecyclerUpdatePayload = RecyclerFormValues;
 // HELPERS
 // ============================================================
 
+const FECHA_INGRESO_DEFAULT = new Date().toISOString().split("T")[0];
+
 export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
   return {
     cedula: recycler.cedula,
     nombreCompleto: recycler.nombreCompleto,
     censado: recycler.censado,
     clasificacion: recycler.clasificacion,
+    fechaIngreso: recycler.fechaIngreso
+      ? recycler.fechaIngreso.split("T")[0]
+      : FECHA_INGRESO_DEFAULT,
     // barrioId es el código que usa el <select> de barrios en el formulario.
     barriosIds: recycler.barrios.map((b) => b.barrioId),
     microrrutasIds: recycler.microrrutas.map((m) => m.id),

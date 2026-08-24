@@ -17,11 +17,14 @@ type RecyclerFormModalProps =
   | { mode: "create"; onClose: () => void; onSaved: () => void }
   | { mode: "edit"; recycler: Recycler; onClose: () => void; onSaved: () => void };
 
+const FECHA_INGRESO_DEFAULT = new Date().toISOString().split("T")[0];
+
 const EMPTY_VALUES: RecyclerFormValues = {
   cedula: "",
   nombreCompleto: "",
   censado: false,
   clasificacion: "NUEVO",
+  fechaIngreso: FECHA_INGRESO_DEFAULT,
   barriosIds: [],
   microrrutasIds: [],
 };
@@ -180,6 +183,17 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700">Fecha de ingreso</label>
+              <input
+                type="date"
+                required
+                value={values.fechaIngreso}
+                onChange={(e) => update("fechaIngreso", e.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
             </div>
 
             <div className="flex items-center gap-2 pt-6">
