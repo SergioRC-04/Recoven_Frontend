@@ -130,25 +130,20 @@ export default function AdminMicrorrutas() {
       .catch((err) => console.error("Error cargando barrios:", err));
   }, [selectedLocalidad]);
 
-  // Vías: filtradas por el filtro de ubicación activo cuando lo hay. Si no
-  // hay ningún filtro pero se está dibujando o editando un trazo, se traen
-  // todas las vías de la ciudad como respaldo — es el único caso en que
-  // tiene sentido cargar el set completo (sin eso, no habría nada a qué
-  // engancharse con el snap). Sin filtro y sin estar dibujando/editando, no
-  // se pide nada (la capa igual está oculta en ese caso).
+  // Vías: se cargan UNA SOLA VEZ al montar, sin ningún filtro, y se quedan
+  // así para toda la sesión. Antes se volvían a pedir cada vez que
+  // cambiaba el filtro o se empezaba a dibujar sin filtro activo — que es
+  // el caso más común — lo que causaba dos problemas: la demora se sentía
+  // en cada "Trazar Nueva Ruta" (petición nueva de la ciudad completa cada
+  // vez), y si el usuario dibujaba antes de que esa petición terminara, el
+  // snap quedaba vacío hasta que llegara. Cargando todo una vez desde el
+  // principio, para cuando el usuario le da a "Trazar" o aplica un filtro,
+  // las vías ya están listas — no hay nada que esperar.
   useEffect(() => {
-    if (!selectedLocalidad && !isBusy) return;
-
-    const filtros = selectedBarrio
-      ? { localidadCod: selectedLocalidad, barrioCod: selectedBarrio }
-      : selectedLocalidad
-        ? { localidadCod: selectedLocalidad }
-        : undefined; // sin filtro, dibujando: todas las vías
-
-    getViasGeoJson(filtros)
+    getViasGeoJson()
       .then(setViasGeo)
       .catch((err) => console.error("Error cargando vías:", err));
-  }, [selectedLocalidad, selectedBarrio, isBusy]);
+  }, []);
 
   // Cambia la localidad y limpia de inmediato los datos que dependían de la
   // anterior (barrios, barrio elegido). Vías NO se limpia aquí: no depende

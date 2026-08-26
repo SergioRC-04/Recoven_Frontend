@@ -205,3 +205,22 @@ export async function exportarMicrorrutasCapa(
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
 }
+
+export interface UbicacionMicrorruta {
+  barrioCod: string | null;
+  barrioNombre: string | null;
+  localidadCod: string | null;
+  localidadNombre: string | null;
+}
+
+/**
+ * Resuelve geométricamente el barrio y la localidad donde cae una
+ * microrruta (intersección espacial en PostGIS, no el barrio asignado a
+ * un reciclador). Si la ruta cruza varios barrios, el backend devuelve el
+ * de mayor longitud de intersección.
+ *
+ * Controller: GET /microrrutas/:id/ubicacion  (JwtAuthGuard)
+ */
+export async function resolverUbicacionMicrorruta(id: number): Promise<UbicacionMicrorruta> {
+  return recovenApi.get(`/microrrutas/${id}/ubicacion`, true);
+}

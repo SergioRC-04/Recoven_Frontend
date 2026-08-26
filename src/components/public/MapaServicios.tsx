@@ -18,6 +18,7 @@ import {
   getLocalidadesGeoJson,
   getBarriosGeoJson,
 } from "../../services/geo";
+import { getMicrorrutas } from "../../services/microrutas";
 import type { Localidad, Barrio } from "../../types/geo";
 
 const VIEW_PROJ = "EPSG:3857";
@@ -47,6 +48,14 @@ const BARRIOS_STYLE = new Style({
   fill: new Fill({ color: "rgba(5, 150, 105, 0.25)" }),
 });
 
+// Azul marino — mismo color que usan las microrrutas en el admin (mapa de
+// trazado y reporte PDF), para mantener una convención visual consistente
+// en toda la app: "esto es una ruta" siempre se ve igual. Contrasta bien
+// contra los verdes de localidades/barrios de este mapa público.
+const MICRORRUTAS_STYLE = new Style({
+  stroke: new Stroke({ color: "#1e3a5f", width: 3 }),
+});
+
 type Ciudad = "Barranquilla" | "Puerto Colombia";
 
 // NOTA: se asume que las propiedades de los features GeoJSON exponen el mismo campo
@@ -66,6 +75,11 @@ export default function MapaServicios() {
 
   const layerLocalidadesRef = useRef<VectorLayer | null>(null);
   const layerBarriosRef = useRef<VectorLayer | null>(null);
+  // Capa de microrrutas: independiente de la lógica de zoom de
+  // localidades/barrios (esa alterna entre las dos según exploración; las
+  // rutas son el servicio que se muestra, así que siempre están visibles).
+  // Solo cambia su fuente de datos según el filtro de localidad/barrio.
+  const layerMicrorrutasRef = useRef<VectorLayer | null>(null);
 
   // Espejos en ref de la selección actual, para poder leerla dentro de listeners del mapa
   // (moveend) sin recrearlos ni depender de closures desactualizados.
@@ -130,6 +144,8 @@ export default function MapaServicios() {
 
   // Aplica visibilidad/estilo a las capas según el estado actual (selección + zoom).
   // Solo lee de refs, así que es seguro usarla dentro de listeners creados una sola vez.
+  // No toca la capa de microrrutas a propósito: esa siempre está visible, ver el
+  // comentario donde se declara layerMicrorrutasRef.
   const applyLayerVisibility = useCallback(() => {
     const localidadesLayer = layerLocalidadesRef.current;
     const barriosLayer = layerBarriosRef.current;
@@ -192,12 +208,20 @@ export default function MapaServicios() {
       visible: false, // oculto hasta que se cumpla el nivel de zoom o haya una selección
     });
 
+    const microrrutasLayer = new VectorLayer({
+      source: new VectorSource(),
+      style: MICRORRUTAS_STYLE,
+    });
+
     layerLocalidadesRef.current = localidadesLayer;
     layerBarriosRef.current = barriosLayer;
+    layerMicrorrutasRef.current = microrrutasLayer;
 
     const map = new Map({
       target: mapContainer.current,
-      layers: [baseLayer, localidadesLayer, barriosLayer],
+      // microrrutasLayer al final: se dibuja encima de los rellenos de
+      // localidades/barrios, para que las líneas de ruta nunca queden tapadas.
+      layers: [baseLayer, localidadesLayer, barriosLayer, microrrutasLayer],
       view: new View({
         center: CENTER_BARRANQUILLA,
         zoom: INITIAL_ZOOM,
@@ -391,6 +415,35 @@ export default function MapaServicios() {
 
     loadBarriosGeo();
   }, [selectedLocalidad, applyLayerVisibility, resolveParentLocalidadId]);
+
+  // Cargar microrrutas (GeoJSON) — se repite cada vez que cambia localidad o barrio, usando
+  // los mismos filtros que ya existen para barrios. Sin vías: esta capa es solo para mostrar
+  // públicamente dónde opera el servicio, no para trazar/editar rutas. Siempre visible, sin
+  // depender del nivel de zoom (a diferencia de localidades/barrios).
+  useEffect(() => {
+    const loadMicrorrutasGeo = async () => {
+      const microrrutasLayer = layerMicrorrutasRef.current;
+      if (!microrrutasLayer) return;
+
+      try {
+        const microrrutasGeo = await getMicrorrutas({
+          localidadCod: selectedLocalidad || undefined,
+          barrioCod: selectedBarrio || undefined,
+        });
+        const source = new VectorSource({
+          features: new GeoJSON({
+            dataProjection: DATA_PROJ,
+            featureProjection: VIEW_PROJ,
+          }).readFeatures(microrrutasGeo),
+        });
+        microrrutasLayer.setSource(source);
+      } catch (error) {
+        console.error("Error cargando microrrutas GeoJSON:", error);
+      }
+    };
+
+    loadMicrorrutasGeo();
+  }, [selectedLocalidad, selectedBarrio]);
 
   // Manejador de cambio de ciudad
   const handleCityChange = (city: Ciudad) => {

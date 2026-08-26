@@ -153,7 +153,14 @@ export default function MicrorrutaMapEditor({
 
     const map = new Map({
       target: mapContainer.current,
-      layers: [baseLayer, barriosLayer, viasLayer, microrrutasLayer, pendingLayer],
+      // barriosLayer va DESPUÉS de viasLayer a propósito: su estilo es solo
+      // borde (sin relleno), así que reordenarla aquí no tapa ni oscurece
+      // las vías — pero sí evita que el borde del barrio quede escondido
+      // debajo de la maraña de calles cuando se muestran todas las vías de
+      // la ciudad (ver conversación sobre la carga de vías). microrrutas y
+      // pendingLayer siguen por encima de todo: son lo que el usuario está
+      // viendo/dibujando activamente.
+      layers: [baseLayer, viasLayer, barriosLayer, microrrutasLayer, pendingLayer],
       view: new View({ center: CENTER_BARRANQUILLA, zoom: 12 }),
     });
 

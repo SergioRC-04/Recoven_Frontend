@@ -17,21 +17,14 @@ import type OlFeature from "ol/Feature";
 import TileLayer from "ol/layer/Tile";
 import OSM from "ol/source/OSM";
 
-import {
-  getBarriosList,
-  getLocalidadesList,
-  getBarriosGeoJson,
-  getViasGeoJson,
-  getLocalidadesGeoJson,
-} from "../services/geo";
+import { getBarriosGeoJson, getViasGeoJson, getLocalidadesGeoJson } from "../services/geo";
 import { getRecyclersByTab } from "../services/recyclers";
+import { resolverUbicacionMicrorruta, type UbicacionMicrorruta } from "../services/microrutas";
 import type {
   GeoJsonFeatureCollection,
   BarrioProperties,
   ViaProperties,
   LocalidadProperties,
-  Barrio,
-  Localidad,
 } from "../types/geo";
 import type { MicrorrutaProperties, LineStringGeoJson } from "../types/microrruta";
 import type { Recycler } from "../types/recycler";
@@ -45,8 +38,6 @@ const COOPERATIVA_NO = "No. XXXX";
 
 interface CacheReporte {
   recyclers?: Recycler[];
-  localidades?: Localidad[];
-  barrios?: Barrio[];
   localidadesGeoJson?: GeoJsonFeatureCollection<LocalidadProperties> | null;
   logoInfo?: { dataUrl: string; width: number; height: number } | null;
   // El localizador (fondo OSM + todas las localidades) es idéntico entre
@@ -56,6 +47,11 @@ interface CacheReporte {
   // tráfico automatizado y afectar también al mapa en vivo del admin (usa
   // el mismo servicio de tiles).
   localizadores: Map<string, string>;
+  // Barrio/localidad calculados geométricamente por el backend (PostGIS) a
+  // partir de la geometría de cada microrruta — no dependen del reciclador.
+  // Cacheado por id de microrruta para no repetir la consulta al backend
+  // si por alguna razón se pidiera dos veces en el mismo lote.
+  ubicaciones: Map<number, UbicacionMicrorruta>;
   contextosGeograficos: Map<
     string,
     {
@@ -103,7 +99,7 @@ async function obtenerLogoCache(
 }
 
 function crearCacheReporte(): CacheReporte {
-  return { contextosGeograficos: new Map(), localizadores: new Map() };
+  return { contextosGeograficos: new Map(), localizadores: new Map(), ubicaciones: new Map() };
 }
 
 async function obtenerRecyclersCache(cache: CacheReporte): Promise<Recycler[]> {
@@ -116,30 +112,6 @@ async function obtenerRecyclersCache(cache: CacheReporte): Promise<Recycler[]> {
     }
   }
   return cache.recyclers;
-}
-
-async function obtenerBarriosCache(cache: CacheReporte): Promise<Barrio[]> {
-  if (cache.barrios === undefined) {
-    try {
-      cache.barrios = await getBarriosList();
-    } catch (error) {
-      console.error("Error cargando barrios para el reporte:", error);
-      cache.barrios = [];
-    }
-  }
-  return cache.barrios;
-}
-
-async function obtenerLocalidadesCache(cache: CacheReporte): Promise<Localidad[]> {
-  if (cache.localidades === undefined) {
-    try {
-      cache.localidades = await getLocalidadesList();
-    } catch (error) {
-      console.error("Error cargando localidades para el reporte:", error);
-      cache.localidades = [];
-    }
-  }
-  return cache.localidades;
 }
 
 async function obtenerLocalidadesGeoJsonCache(
@@ -156,50 +128,49 @@ async function obtenerLocalidadesGeoJsonCache(
   return cache.localidadesGeoJson;
 }
 
-interface ContextoReciclador {
-  reciclador: Recycler | null;
-  barrioNombre: string;
-  localidadNombre: string;
-  localidadCod: string | null;
-  barrioCod: string | null;
-}
-
-async function resolverContextoReciclador(
+/**
+ * Encuentra el reciclador asignado a una microrruta — solo para
+ * NOMBRE/CEDULA en la ficha del reporte. El barrio y la localidad ya NO
+ * salen de aquí (ver resolverUbicacionGeografica): antes se tomaban del
+ * barrio asignado al reciclador, pero eso podía no corresponder con por
+ * dónde pasa realmente la ruta.
+ */
+async function resolverReciclador(
   microrrutaId: number,
   cache: CacheReporte
-): Promise<ContextoReciclador> {
+): Promise<Recycler | null> {
   const todos = await obtenerRecyclersCache(cache);
-  const reciclador = todos.find((r) => r.microrrutas.some((m) => m.id === microrrutaId)) ?? null;
+  return todos.find((r) => r.microrrutas.some((m) => m.id === microrrutaId)) ?? null;
+}
 
-  if (!reciclador || reciclador.barrios.length === 0) {
-    return {
-      reciclador,
-      barrioNombre: "",
-      localidadNombre: "",
-      localidadCod: null,
+/**
+ * Barrio y localidad de una microrruta, calculados geométricamente por el
+ * backend (intersección espacial en PostGIS contra los polígonos de
+ * barrios/localidades) — no dependen de a qué reciclador esté asignada la
+ * ruta. Cacheado por id de microrruta.
+ */
+async function resolverUbicacionGeografica(
+  microrrutaId: number,
+  cache: CacheReporte
+): Promise<UbicacionMicrorruta> {
+  const enCache = cache.ubicaciones.get(microrrutaId);
+  if (enCache) return enCache;
+
+  try {
+    const ubicacion = await resolverUbicacionMicrorruta(microrrutaId);
+    cache.ubicaciones.set(microrrutaId, ubicacion);
+    return ubicacion;
+  } catch (error) {
+    console.error("Error resolviendo la ubicación geográfica de la microrruta:", error);
+    const vacio: UbicacionMicrorruta = {
       barrioCod: null,
+      barrioNombre: null,
+      localidadCod: null,
+      localidadNombre: null,
     };
+    cache.ubicaciones.set(microrrutaId, vacio);
+    return vacio;
   }
-
-  const barrioAsignado = reciclador.barrios[0];
-  let localidadNombre = "";
-  let localidadCod: string | null = null;
-
-  const barrios = await obtenerBarriosCache(cache);
-  const barrioCompleto = barrios.find((b) => b.identificador === barrioAsignado.barrioId);
-  if (barrioCompleto) {
-    localidadCod = barrioCompleto.localidadCod;
-    const localidades = await obtenerLocalidadesCache(cache);
-    localidadNombre = localidades.find((l) => l.identificador === localidadCod)?.nombre ?? "";
-  }
-
-  return {
-    reciclador,
-    barrioNombre: barrioAsignado.nombreBarrio || barrioAsignado.barrioId,
-    localidadNombre,
-    localidadCod,
-    barrioCod: barrioAsignado.barrioId,
-  };
 }
 
 async function obtenerContextoGeografico(
@@ -715,12 +686,15 @@ async function dibujarPaginaReporte(
   geometry: LineStringGeoJson,
   cache: CacheReporte
 ): Promise<void> {
-  const { reciclador, barrioNombre, localidadNombre, localidadCod, barrioCod } =
-    await resolverContextoReciclador(microrruta.id, cache);
+  // El reciclador solo aporta NOMBRE/CEDULA a la ficha; BARRIO/LOCALIDAD ya
+  // no dependen de él — se calculan geométricamente a partir de por dónde
+  // pasa realmente la ruta (ver resolverUbicacionGeografica).
+  const reciclador = await resolverReciclador(microrruta.id, cache);
+  const ubicacion = await resolverUbicacionGeografica(microrruta.id, cache);
 
   const { barriosGeoJson, viasGeoJson } = await obtenerContextoGeografico(
-    localidadCod,
-    barrioCod,
+    ubicacion.localidadCod,
+    ubicacion.barrioCod,
     cache
   );
   const localidadesGeoJson = await obtenerLocalidadesGeoJsonCache(cache);
@@ -764,8 +738,8 @@ async function dibujarPaginaReporte(
       { etiqueta: "CEDULA", valor: reciclador?.cedula ?? "" },
       { etiqueta: "NUMACRO", valor: String(microrruta.id) },
       { etiqueta: "HORARIO", valor: formatearHorario(microrruta) },
-      { etiqueta: "BARRIO", valor: barrioNombre },
-      { etiqueta: "LOCALIDAD", valor: localidadNombre },
+      { etiqueta: "BARRIO", valor: ubicacion.barrioNombre ?? "" },
+      { etiqueta: "LOCALIDAD", valor: ubicacion.localidadNombre ?? "" },
       { etiqueta: "INICIO", valor: microrruta.dirInicio ?? "" },
       { etiqueta: "FIN", valor: microrruta.dirFin ?? "" },
     ]) + gap;
@@ -783,12 +757,12 @@ async function dibujarPaginaReporte(
     // Clave por localidad (no por ruta): así, dos rutas de la misma
     // localidad reutilizan la misma imagen ya renderizada en vez de volver
     // a pedir tiles de OSM y redibujar todo el país/ciudad de nuevo.
-    const claveLocalizador = `${localidadCod ?? "sin-localidad"}|${widthPxLoc}x${heightPxLoc}`;
+    const claveLocalizador = `${ubicacion.localidadCod ?? "sin-localidad"}|${widthPxLoc}x${heightPxLoc}`;
     let localizadorDataUrl = cache.localizadores.get(claveLocalizador);
     if (!localizadorDataUrl) {
       localizadorDataUrl = await renderizarMapaLocalizador(
         localidadesGeoJson,
-        localidadCod,
+        ubicacion.localidadCod,
         widthPxLoc,
         heightPxLoc
       );
