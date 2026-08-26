@@ -430,7 +430,7 @@ export default function AdminMicrorrutas() {
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-            Descargar Excel
+            Generar Excel SUI Microrutas
           </button>
           <button
             type="button"
@@ -440,7 +440,7 @@ export default function AdminMicrorrutas() {
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-            Descargar todo ({microrrutasList.length})
+            Generar Informe SUI Microrutas ({microrrutasList.length})
           </button>
         </div>
       )}
