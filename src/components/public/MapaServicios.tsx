@@ -52,9 +52,34 @@ const BARRIOS_STYLE = new Style({
 // trazado y reporte PDF), para mantener una convención visual consistente
 // en toda la app: "esto es una ruta" siempre se ve igual. Contrasta bien
 // contra los verdes de localidades/barrios de este mapa público.
-const MICRORRUTAS_STYLE = new Style({
-  stroke: new Stroke({ color: "#1e3a5f", width: 3 }),
-});
+//
+// El grosor SÍ cambia con el zoom (a diferencia del admin): a la vista
+// inicial (más alejado) un grosor fijo se ve como un bloque grueso tapando
+// el mapa; acercándose, ese mismo grosor luce apropiado. Se interpola
+// entre dos referencias de zoom en vez de usar un valor fijo.
+const GROSOR_RUTA_MIN = 1.2; // al zoom 12 o más alejado
+const GROSOR_RUTA_MAX = 3; // al zoom 15 o más cercano
+// 156543.03392804097 = resolución (m/px) en zoom 0 para EPSG:3857 con
+// tiles de 256px — la misma constante que usa cualquier mapa web estándar
+// (OL, Leaflet, Google Maps) para su grilla de tiles.
+const RESOLUCION_ZOOM_12 = 156543.03392804097 / Math.pow(2, 12);
+const RESOLUCION_ZOOM_15 = 156543.03392804097 / Math.pow(2, 15);
+
+function grosorRutaSegunResolucion(resolution: number): number {
+  if (resolution >= RESOLUCION_ZOOM_12) return GROSOR_RUTA_MIN;
+  if (resolution <= RESOLUCION_ZOOM_15) return GROSOR_RUTA_MAX;
+  const t = (RESOLUCION_ZOOM_12 - resolution) / (RESOLUCION_ZOOM_12 - RESOLUCION_ZOOM_15);
+  return GROSOR_RUTA_MIN + t * (GROSOR_RUTA_MAX - GROSOR_RUTA_MIN);
+}
+
+// Función de estilo (no un objeto de Style fijo): OpenLayers la vuelve a
+// llamar en cada render pasándole la resolución actual, así el grosor se
+// recalcula solo al hacer zoom — no depende de ningún estado de React.
+function estiloMicrorrutas(_feature: unknown, resolution: number): Style {
+  return new Style({
+    stroke: new Stroke({ color: "#1e3a5f", width: grosorRutaSegunResolucion(resolution) }),
+  });
+}
 
 type Ciudad = "Barranquilla" | "Puerto Colombia";
 
@@ -210,7 +235,7 @@ export default function MapaServicios() {
 
     const microrrutasLayer = new VectorLayer({
       source: new VectorSource(),
-      style: MICRORRUTAS_STYLE,
+      style: estiloMicrorrutas,
     });
 
     layerLocalidadesRef.current = localidadesLayer;

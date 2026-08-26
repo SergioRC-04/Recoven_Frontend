@@ -34,7 +34,6 @@ const DATA_PROJ = "EPSG:4326";
 
 const COOPERATIVA_NOMBRE = "RECOVEN ECA SAS ESP";
 const COOPERATIVA_NIT = "NIT 901427170-6";
-const COOPERATIVA_NO = "No. XXXX";
 
 interface CacheReporte {
   recyclers?: Recycler[];
@@ -516,7 +515,8 @@ function dibujarEncabezado(
   x: number,
   y: number,
   width: number,
-  logoInfo: { dataUrl: string; width: number; height: number } | null
+  logoInfo: { dataUrl: string; width: number; height: number } | null,
+  nombreMicrorruta: string
 ): number {
   const altura = 34;
   pdf.setDrawColor("#000000");
@@ -539,7 +539,10 @@ function dibujarEncabezado(
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.text(COOPERATIVA_NIT, x + 3, y + altura - 2.5);
-  pdf.text(COOPERATIVA_NO, x + width - 3, y + altura - 2.5, { align: "right" });
+  pdf.text(nombreMicrorruta, x + width - 3, y + altura - 2.5, {
+    align: "right",
+    maxWidth: width / 2 - 6,
+  });
   return y + altura;
 }
 
@@ -730,7 +733,9 @@ async function dibujarPaginaReporte(
 
   let cursorY = margen;
   const logoInfo = await obtenerLogoCache(cache);
-  cursorY = dibujarEncabezado(pdf, colDerechaX, cursorY, colDerechaAncho, logoInfo) + gap;
+  cursorY =
+    dibujarEncabezado(pdf, colDerechaX, cursorY, colDerechaAncho, logoInfo, microrruta.nombre) +
+    gap;
 
   cursorY =
     dibujarTablaInfo(pdf, colDerechaX, cursorY, colDerechaAncho, [
