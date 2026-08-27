@@ -7,11 +7,19 @@ import {
   FaFilePdf,
   FaSpinner,
 } from "react-icons/fa";
-import {
-  TIPO_MICRORRUTA_LABELS,
-  TIPO_BARRIDO_LABELS,
-  type MicrorrutaProperties,
-} from "../../types/microrruta";
+import { TIPO_MICRORRUTA_LABELS, type MicrorrutaProperties } from "../../types/microrruta";
+
+// Formatea la fecha directo desde el texto ISO, sin construir un objeto
+// Date — new Date(iso).toLocaleDateString() convierte a la zona horaria
+// local, y una fecha en UTC medianoche (como llega del backend) cae en el
+// día anterior en Colombia (UTC-5). Como este campo es una fecha de
+// calendario, no un instante preciso, se evita ese corrimiento formateando
+// el texto tal cual — mismo enfoque que ya usa toMicrorrutaFormValues().
+function formatearFecha(fechaISO: string): string {
+  const [fecha] = fechaISO.split("T");
+  const [anio, mes, dia] = fecha.split("-");
+  return `${dia}/${mes}/${anio}`;
+}
 
 interface MicrorrutasTableProps {
   microrrutas: MicrorrutaProperties[];
@@ -20,10 +28,17 @@ interface MicrorrutasTableProps {
   // id de la microrruta cuyo PDF se está generando actualmente (muestra un
   // spinner en su fila). null = ninguna en proceso.
   generandoReporteId: number | null;
+  // id de la microrruta resaltada en el mapa (clic en su trazo). null =
+  // ninguna seleccionada.
+  selectedId: number | null;
   onEdit: (microrruta: MicrorrutaProperties) => void;
   onEditGeometria: (microrruta: MicrorrutaProperties) => void;
   onDelete: (microrruta: MicrorrutaProperties) => void;
   onGenerarReporte: (microrruta: MicrorrutaProperties) => void;
+  // Clic en la fila (fuera de los botones de acción) para seleccionar esa
+  // microrruta — resalta su trazo en el mapa. Clic en la ya seleccionada
+  // la deselecciona (se decide en el padre, este componente solo avisa).
+  onSelectRow: (microrruta: MicrorrutaProperties) => void;
 }
 
 export default function MicrorrutasTable({
@@ -31,11 +46,23 @@ export default function MicrorrutasTable({
   editingGeometriaId,
   disabled,
   generandoReporteId,
+  selectedId,
   onEdit,
   onEditGeometria,
   onDelete,
   onGenerarReporte,
+  onSelectRow,
 }: MicrorrutasTableProps) {
+  // La seleccionada se muestra primero; el resto conserva su orden
+  // original. Sin selección, es exactamente el array que llegó — no se
+  // reordena hasta que haya algo que traer al frente.
+  const microrrutasOrdenadas = selectedId
+    ? [
+        ...microrrutas.filter((mr) => mr.id === selectedId),
+        ...microrrutas.filter((mr) => mr.id !== selectedId),
+      ]
+    : microrrutas;
+
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -44,7 +71,6 @@ export default function MicrorrutasTable({
             <tr>
               <th className="p-4">Nombre</th>
               <th className="p-4">Tipo</th>
-              <th className="p-4">Barrido</th>
               <th className="p-4">Fecha</th>
               <th className="p-4">Frecuencia</th>
               <th className="p-4 text-right">Longitud</th>
@@ -54,17 +80,25 @@ export default function MicrorrutasTable({
           <tbody className="divide-y divide-gray-100">
             {microrrutas.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-gray-400">
+                <td colSpan={6} className="py-6 text-center text-gray-400">
                   No hay microrrutas registradas con este filtro.
                 </td>
               </tr>
             ) : (
-              microrrutas.map((mr) => {
+              microrrutasOrdenadas.map((mr) => {
                 const isEditingThis = editingGeometriaId === mr.id;
+                const isSelected = selectedId === mr.id;
                 return (
                   <tr
                     key={mr.id}
-                    className={`transition ${isEditingThis ? "bg-amber-50/70" : "hover:bg-gray-50"}`}
+                    onClick={() => onSelectRow(mr)}
+                    className={`cursor-pointer transition ${
+                      isEditingThis
+                        ? "bg-amber-50/70"
+                        : isSelected
+                          ? "bg-red-50/70 ring-1 ring-red-300 ring-inset"
+                          : "hover:bg-gray-50"
+                    }`}
                   >
                     <td className="p-4 font-bold text-gray-900">{mr.nombre}</td>
                     <td className="p-4">
@@ -72,11 +106,8 @@ export default function MicrorrutasTable({
                         {TIPO_MICRORRUTA_LABELS[mr.tipo] ?? mr.tipo}
                       </span>
                     </td>
-                    <td className="p-4 text-gray-600">
-                      {TIPO_BARRIDO_LABELS[mr.tipoBarrido] ?? mr.tipoBarrido}
-                    </td>
                     <td className="p-4 text-xs text-gray-500">
-                      {new Date(mr.fechaOperacion).toLocaleDateString("es-CO")}
+                      {formatearFecha(mr.fechaOperacion)}
                     </td>
                     <td className="p-4 text-gray-600">
                       {mr.frecuencia}x — {mr.diasFrecuencia}
@@ -86,7 +117,7 @@ export default function MicrorrutasTable({
                         ? `${parseFloat(String(mr.longitudKm)).toFixed(2)} km`
                         : "—"}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-3">
                         <button
                           onClick={() => onEdit(mr)}

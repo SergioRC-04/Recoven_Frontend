@@ -9,6 +9,8 @@ import OSM from "ol/source/OSM";
 import GeoJSON from "ol/format/GeoJSON";
 import Draw, { type DrawEvent } from "ol/interaction/Draw";
 import Snap from "ol/interaction/Snap";
+import Select from "ol/interaction/Select";
+import { click } from "ol/events/condition";
 import Collection from "ol/Collection";
 import type OlFeature from "ol/Feature";
 import { fromLonLat } from "ol/proj";
@@ -49,6 +51,14 @@ const MICRORRUTA_EDITING_STYLE = new Style({
   }),
 });
 
+// Rojo, a propósito: es el único color de la paleta que no está tomado por
+// ningún otro significado (violeta=barrios, dorado=vías, azul=microrrutas,
+// ámbar=editando, verde=trazo pendiente) — para que "seleccionada para ver"
+// nunca se confunda con "en edición".
+const MICRORRUTA_SELECTED_STYLE = new Style({
+  stroke: new Stroke({ color: "#dc2626", width: 5 }),
+});
+
 const SKETCH_STYLE = new Style({
   stroke: new Stroke({ color: "#059669", width: 3, lineDash: [6, 6] }),
 });
@@ -82,6 +92,14 @@ interface MicrorrutaMapEditorProps {
   onDrawEnd: (geojson: LineStringGeoJson, distanciaTotalKm: number) => void;
   onGeometriaSaved: () => void;
   onCancelGeometriaEdit: () => void;
+  // Se llama al hacer clic en una microrruta (o en otro lado, para
+  // deseleccionar). No activo mientras se dibuja/edita — ver el efecto que
+  // gestiona la interacción Select.
+  onSelectMicrorruta?: (id: number | null) => void;
+  // Selección controlada por el padre — permite seleccionar una
+  // microrruta desde afuera (p. ej. clic en la fila de la tabla) y que el
+  // mapa la resalte, no solo al revés (clic en el mapa → avisar al padre).
+  selectedMicrorrutaId?: number | null;
 }
 
 export default function MicrorrutaMapEditor({
@@ -96,6 +114,8 @@ export default function MicrorrutaMapEditor({
   onDrawEnd,
   onGeometriaSaved,
   onCancelGeometriaEdit,
+  onSelectMicrorruta,
+  selectedMicrorrutaId = null,
 }: MicrorrutaMapEditorProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -559,6 +579,53 @@ export default function MicrorrutaMapEditor({
       setSavingGeometria(false);
     }
   }, [editingGeometriaId, editSketchGeojson, onGeometriaSaved]);
+
+  // Interacción Select: permite hacer clic en una microrruta para
+  // resaltarla (estilo propio, no el de la capa) y avisar al padre — que a
+  // su vez resalta la fila correspondiente en la tabla. Clic en cualquier
+  // otro lugar del mapa deselecciona automáticamente (comportamiento nativo
+  // de Select, no hay que programarlo). No convive con dibujar/editar:
+  // Draw también captura clics, y tenerlas activas a la vez causaría
+  // conflictos — por eso esta interacción ni siquiera se crea en esos casos.
+  //
+  // selectedMicrorrutaId está en las dependencias para que, si la
+  // selección se pide desde afuera (clic en la fila de la tabla), esta
+  // interacción se recree ya con esa microrruta resaltada — el costo de
+  // recrear la interacción en cada clic es insignificante. El cleanup NO
+  // vuelve a avisar null al padre: si lo hiciera, cada vez que este mismo
+  // efecto se recrea por un cambio de selección se autocancelaría la
+  // selección que se acababa de pedir, un instante antes de aplicarla.
+  useEffect(() => {
+    const map = mapRef.current;
+    const microrrutasLayer = microrrutasLayerRef.current;
+    if (!map || !microrrutasLayer) return;
+    if (drawing || editingGeometriaId !== null) return;
+
+    const select = new Select({
+      condition: click,
+      layers: [microrrutasLayer],
+      style: MICRORRUTA_SELECTED_STYLE,
+    });
+    map.addInteraction(select);
+
+    if (selectedMicrorrutaId != null) {
+      const feature = microrrutasLayer
+        .getSource()
+        ?.getFeatures()
+        .find((f) => f.get("id") === selectedMicrorrutaId);
+      if (feature) select.getFeatures().push(feature);
+    }
+
+    select.on("select", (e) => {
+      const seleccionada = e.selected[0];
+      const id = seleccionada ? (seleccionada.get("id") as number) : null;
+      onSelectMicrorruta?.(id);
+    });
+
+    return () => {
+      map.removeInteraction(select);
+    };
+  }, [drawing, editingGeometriaId, selectedMicrorrutaId, onSelectMicrorruta]);
 
   return (
     <div className="relative">

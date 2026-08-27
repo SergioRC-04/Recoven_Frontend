@@ -72,6 +72,9 @@ export default function AdminMicrorrutas() {
 
   const [drawing, setDrawing] = useState(false);
   const [editingGeometriaId, setEditingGeometriaId] = useState<number | null>(null);
+  // Microrruta resaltada al hacer clic en ella en el mapa — se refleja en
+  // la fila correspondiente de la tabla de abajo.
+  const [microrrutaSeleccionadaId, setMicrorrutaSeleccionadaId] = useState<number | null>(null);
   // id de la microrruta cuyo PDF se está generando (muestra spinner en su fila).
   const [generandoReporteId, setGenerandoReporteId] = useState<number | null>(null);
   // Progreso del PDF combinado ("Descargar todo"). null = no está corriendo.
@@ -115,12 +118,18 @@ export default function AdminMicrorrutas() {
     getBarriosGeoJson({ localidadCod: selectedLocalidad })
       .then((geo) => {
         setBarriosGeo(geo);
-        const lista: Barrio[] = geo.features.map((f) => ({
-          id: f.properties.id,
-          identificador: f.properties.identificador,
-          nombre_barrio: f.properties.nombre,
-          localidadCod: f.properties.localidadCod,
-        }));
+        const lista: Barrio[] = geo.features
+          .map((f) => ({
+            id: f.properties.id,
+            identificador: f.properties.identificador,
+            nombre_barrio: f.properties.nombre,
+            localidadCod: f.properties.localidadCod,
+          }))
+          // Son demasiados barrios para dejarlos en el orden que llegue del
+          // backend — se ordenan alfabéticamente para el selector. No
+          // depende de que el backend también los ordene (aunque lo haga):
+          // es una garantía explícita en el punto donde se muestran.
+          .sort((a, b) => a.nombre_barrio.localeCompare(b.nombre_barrio, "es"));
         setBarrios(lista);
         // Si el barrio seleccionado ya no pertenece a la nueva localidad, lo limpiamos.
         setSelectedBarrio((prev) =>
@@ -393,6 +402,8 @@ export default function AdminMicrorrutas() {
           refresh();
         }}
         onCancelGeometriaEdit={() => setEditingGeometriaId(null)}
+        onSelectMicrorruta={setMicrorrutaSeleccionadaId}
+        selectedMicrorrutaId={microrrutaSeleccionadaId}
       />
 
       {loading ? (
@@ -403,10 +414,14 @@ export default function AdminMicrorrutas() {
           editingGeometriaId={editingGeometriaId}
           disabled={isBusy}
           generandoReporteId={generandoReporteId}
+          selectedId={microrrutaSeleccionadaId}
           onEdit={handleEdit}
           onEditGeometria={(mr) => setEditingGeometriaId(mr.id)}
           onDelete={handleDelete}
           onGenerarReporte={handleGenerarReporte}
+          onSelectRow={(mr) =>
+            setMicrorrutaSeleccionadaId((prev) => (prev === mr.id ? null : mr.id))
+          }
         />
       )}
 
@@ -425,7 +440,7 @@ export default function AdminMicrorrutas() {
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-            Generar Excel SUI Microrutas
+            Descargar Excel
           </button>
           <button
             type="button"
@@ -435,7 +450,7 @@ export default function AdminMicrorrutas() {
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-            Generar Informe SUI Microrutas ({microrrutasList.length})
+            Descargar todo ({microrrutasList.length})
           </button>
         </div>
       )}
