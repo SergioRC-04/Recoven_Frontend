@@ -77,7 +77,7 @@ export default function AdminMicrorrutas() {
   const [microrrutaSeleccionadaId, setMicrorrutaSeleccionadaId] = useState<number | null>(null);
   // id de la microrruta cuyo PDF se está generando (muestra spinner en su fila).
   const [generandoReporteId, setGenerandoReporteId] = useState<number | null>(null);
-  // Progreso del PDF combinado ("Descargar todo"). null = no está corriendo.
+  // Progreso del PDF combinado ("Generar Informe SUI Microrrutas"). null = no está corriendo.
   const [generandoTodo, setGenerandoTodo] = useState<{ actual: number; total: number } | null>(
     null
   );
@@ -273,7 +273,7 @@ export default function AdminMicrorrutas() {
   const handleDescargarExcel = async () => {
     setDescargandoExcel(true);
     try {
-      // Mismo filtro activo que la tabla y que "Descargar todo" (PDF).
+      // Mismo filtro activo que la tabla y que "Generar Informe SUI Microrrutas" (PDF).
       const blob = await exportarMicrorrutasExcel({
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
@@ -296,11 +296,40 @@ export default function AdminMicrorrutas() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-gray-200 pb-5">
-        <h1 className="text-2xl font-black text-gray-900">Microrrutas</h1>
-        <p className="text-sm text-gray-500">
-          Trace y administre los recorridos de recolección sobre el mapa.
-        </p>
+      <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900">Microrrutas</h1>
+          <p className="text-sm text-gray-500">
+            Trace y administre los recorridos de recolección sobre el mapa.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {generandoTodo && (
+            <span className="text-xs font-semibold text-gray-500">
+              Generando {generandoTodo.actual} de {generandoTodo.total}...
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleDescargarExcel}
+            disabled={isBusy || descargandoExcel}
+            title="Descargar el reporte de microrrutas en formato SUI (.xlsx)"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+            Generar Excel SUI Microrrutas
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerarReporteTodas}
+            disabled={isBusy || generandoTodo !== null}
+            title="Descargar un solo PDF con una hoja por cada microrruta mostrada"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
+            Generar Informe SUI Microrrutas ({microrrutasList.length})
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -351,7 +380,7 @@ export default function AdminMicrorrutas() {
           <FaEraser /> Limpiar filtros
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setMostrarExportarCapas(true)}
@@ -423,36 +452,6 @@ export default function AdminMicrorrutas() {
             setMicrorrutaSeleccionadaId((prev) => (prev === mr.id ? null : mr.id))
           }
         />
-      )}
-
-      {!loading && microrrutasList.length > 0 && (
-        <div className="flex items-center justify-end gap-3">
-          {generandoTodo && (
-            <span className="text-xs font-semibold text-gray-500">
-              Generando {generandoTodo.actual} de {generandoTodo.total}...
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={handleDescargarExcel}
-            disabled={isBusy || descargandoExcel}
-            title="Descargar el reporte de microrrutas en formato SUI (.xlsx)"
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-            Descargar Excel
-          </button>
-          <button
-            type="button"
-            onClick={handleGenerarReporteTodas}
-            disabled={isBusy || generandoTodo !== null}
-            title="Descargar un solo PDF con una hoja por cada microrruta mostrada"
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-            Descargar todo ({microrrutasList.length})
-          </button>
-        </div>
       )}
 
       {mostrarExportarCapas && (
