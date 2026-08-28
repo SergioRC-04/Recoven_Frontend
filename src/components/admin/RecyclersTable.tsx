@@ -1,5 +1,5 @@
 // components/admin/RecyclersTable.tsx
-import { FaEdit, FaUserSlash, FaUserCheck, FaSpinner } from "react-icons/fa";
+import { FaEdit, FaUserSlash, FaUserCheck, FaSpinner, FaFilePdf } from "react-icons/fa";
 import {
   CLASIFICACION_LABELS,
   CLASIFICACION_COLORS,
@@ -11,20 +11,26 @@ interface RecyclersTableProps {
   recyclers: Recycler[];
   activeTab: RecyclerTab;
   togglingId: number | null;
+  // id del reciclador cuyo certificado se está descargando (spinner en su
+  // fila). null = ninguno en proceso.
+  descargandoCertificadoId: number | null;
   onEdit: (recycler: Recycler) => void;
   onToggleCenso: (recycler: Recycler) => void;
   onDesvincular: (recycler: Recycler) => void;
   onReactivar: (recycler: Recycler) => void;
+  onDescargarCertificado: (recycler: Recycler) => void;
 }
 
 export default function RecyclersTable({
   recyclers,
   activeTab,
   togglingId,
+  descargandoCertificadoId,
   onEdit,
   onToggleCenso,
   onDesvincular,
   onReactivar,
+  onDescargarCertificado,
 }: RecyclersTableProps) {
   const isHistorico = activeTab === "desvinculados";
 
@@ -116,6 +122,18 @@ export default function RecyclersTable({
                           <FaEdit />
                         </button>
                       )}
+                      <button
+                        onClick={() => onDescargarCertificado(r)}
+                        disabled={descargandoCertificadoId === r.id}
+                        title="Descargar certificado de vinculación"
+                        className="text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {descargandoCertificadoId === r.id ? (
+                          <FaSpinner className="animate-spin" />
+                        ) : (
+                          <FaFilePdf />
+                        )}
+                      </button>
                       {isHistorico ? (
                         <button
                           onClick={() => onReactivar(r)}

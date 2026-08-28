@@ -2,6 +2,7 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { FaTimes, FaSpinner, FaRecycle } from "react-icons/fa";
 import { createRecycler, updateRecycler, exportarCertificado } from "../../services/recyclers";
+import { descargarBlob } from "../../lib/descargarBlob";
 import { getMicrorrutasList } from "../../services/microrutas";
 import { getBarriosList } from "../../services/geo";
 import type { Barrio } from "../../types/geo";
@@ -82,14 +83,7 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
   const descargarCertificado = async (id: number, nombreCompleto: string) => {
     try {
       const blob = await exportarCertificado(id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `certificado-${nombreCompleto.replace(/\s+/g, "_")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      descargarBlob(blob, `certificado-${nombreCompleto.replace(/\s+/g, "_")}.pdf`);
     } catch (error) {
       console.error("Error descargando certificado:", error);
       alert("No se pudo descargar el certificado.");
