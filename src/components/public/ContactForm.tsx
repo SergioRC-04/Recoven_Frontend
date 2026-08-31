@@ -12,22 +12,7 @@ import {
   FaCheckCircle,
   FaTimesCircle,
 } from "react-icons/fa";
-
-interface FormData {
-  nombre: string;
-  telefono: string;
-  email: string;
-  empresa: string;
-  direccion: string;
-  servicio: string;
-  especialidad: string;
-  mensaje: string;
-}
-
-interface SubmitStatus {
-  type: "idle" | "success" | "error";
-  message: string;
-}
+import type { FormData, SubmitStatus } from "../../types/formdata";
 
 export default function ContactForm() {
   const { servicio: servicioPreselect, especialidad: especialidadPreselect } =

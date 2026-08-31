@@ -9,21 +9,3 @@ arreglar grafias cuando hay mas de 6 meses
 revisar politica de tratamiento de datos
 
 Hacer testeo
-Mejorar ui
-
-----------------------------------------------
-
-Se requiere hacer un mapa en la página principal, en la que se van a mostrar las rutas de los trabajadores (recicladores) son más de 60 rutas, de los cuales por ahora solo se tienen datos de el barrio, la ruta en si, el nombre y la cedula, sin embargo, son mas campos los necesarios, por lo que es necesario que lo agreguemos despues.
-- Se requiere un mapa con todas rutas para filtrar por localidad y barrio y poder señalar las rutas sin mostrar datos debido a que esto es para vista publica, solo se puede mostrar el id.
-- Se requiere una db con los datos de los trabajadores (los campos antes mencionados).
-- Se tiene que exportar certificados de cada trabajador.
-- Se exportan los mapas individuales. 
-- Se tiene que tener en cuenta el censo (Esto para la parte del admin).
-- Se muestran trabajadores viejos.
-- Se diferencia trabajadores nuevos no censados
-- Se tiene que hacer el codigo de colores
-* Los que tienen rutas
-* No tienen rutas
-* Nuevos
-* A quitar
-MAGNA-SIRGAS / Origen Nacional (EPSG:9377).
