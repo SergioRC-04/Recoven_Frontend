@@ -118,9 +118,14 @@ export default function ContactForm() {
       setErrors({});
     } catch (error) {
       console.error("[ContactForm] Error:", error);
+      // Ahora que el backend valida en serio (formato de teléfono, largo de
+      // campos, etc.), su mensaje ya es específico y útil para el usuario
+      // — mostrar siempre el genérico lo escondía sin necesidad.
+      const mensaje = error instanceof Error && error.message ? error.message : null;
       setSubmitStatus({
         type: "error",
-        message: "Hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo.",
+        message:
+          mensaje ?? "Hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo.",
       });
     } finally {
       setIsSubmitting(false);

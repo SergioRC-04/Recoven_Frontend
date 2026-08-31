@@ -37,9 +37,18 @@ async function handleResponse(
     let errorMsg = `HTTP Error ${response.status}`;
     try {
       const errorData = (await response.json()) as {
-        message?: string;
+        message?: string | string[];
       };
-      errorMsg = errorData.message || errorMsg;
+      // El ValidationPipe de NestJS devuelve un arreglo cuando hay varios
+      // errores de validación a la vez (uno por campo), y un string simple
+      // cuando es un solo error de negocio. Antes se asumía siempre string,
+      // así que un arreglo terminaba coercionado por Error() y unido con
+      // comas sin espacio ("mensaje uno,mensaje dos").
+      if (Array.isArray(errorData.message)) {
+        errorMsg = errorData.message.join(". ");
+      } else if (errorData.message) {
+        errorMsg = errorData.message;
+      }
     } catch {
       // ignore
     }
