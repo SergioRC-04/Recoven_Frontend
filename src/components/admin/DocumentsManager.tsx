@@ -188,6 +188,186 @@ export default function DocumentsManager() {
     setExpandedId(expandedId === id ? null : id);
   };
 
+  // --- Piezas del historial compartidas entre la tabla (desktop) y las
+  // tarjetas (mobile), para no duplicar la vista previa del correo (la
+  // parte más grande) en dos lugares distintos.
+
+  const renderBadgeTipo = (isPoda: boolean) => (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
+        isPoda
+          ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+          : "border-blue-100 bg-blue-50 text-blue-700"
+      }`}
+    >
+      {isPoda ? "🍃 PODA" : "📦 RESIDUOS"}
+    </span>
+  );
+
+  const renderBadgeEstado = (cert: Certificate) => (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
+        ESTADO_CERT_COLORS[cert.estado] ?? "border-gray-100 bg-gray-50 text-gray-600"
+      }`}
+    >
+      {cert.estado === "PENDIENTE" && <FaSpinner className="animate-spin" />}
+      {ESTADO_CERT_LABELS[cert.estado] ?? cert.estado}
+    </span>
+  );
+
+  const renderDocumentoLink = (cert: Certificate) =>
+    cert.urlArchivo ? (
+      <a
+        href={cert.urlArchivo}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1.5 font-medium text-emerald-600 hover:underline"
+      >
+        <FaFilePdf className="text-sm text-emerald-500" />
+        <span className="max-w-90 truncate">{cert.nombreArchivo}</span>
+      </a>
+    ) : (
+      <span className="inline-flex items-center gap-1.5 text-gray-400">
+        <FaFilePdf className="text-sm text-gray-300" />
+        <span className="max-w-90 truncate">{cert.nombreArchivo}</span>
+      </span>
+    );
+
+  const formatearFechaEnvio = (fechaEnvio: string) =>
+    new Date(fechaEnvio).toLocaleDateString("es-CO", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  const renderContenidoExpandido = (cert: Certificate, isPoda: boolean) => {
+    if (cert.estado === "FALLIDO") {
+      return (
+        <div className="mx-auto my-2 max-w-2xl rounded-xl border border-red-200 bg-red-50 p-6">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-red-500 uppercase">
+            <FaExclamationTriangle /> Este envío falló
+          </div>
+          <p className="text-sm text-red-800">
+            {cert.errorDetalle ||
+              "No se pudo completar el envío. Revisa el correo de alerta para más detalle."}
+          </p>
+        </div>
+      );
+    }
+
+    if (cert.estado === "PENDIENTE") {
+      return (
+        <div className="mx-auto my-2 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-6">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-amber-600 uppercase">
+            <FaSpinner className="animate-spin" /> Este envío sigue en proceso
+          </div>
+          <p className="text-sm text-amber-800">
+            Si lleva más de unos minutos así, probablemente el proceso se interrumpió — revisa si
+            llegó un correo de alerta.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-gray-400 uppercase">
+          Vista previa del correo electrónico enviado
+        </div>
+        <div className="mx-auto my-2 max-w-2xl rounded-xl border border-gray-200 bg-white p-6 font-sans text-gray-800 shadow-sm">
+          <div className="mb-6 text-center">
+            <img
+              src="https://recovenesp.com/assets/img/logo.png"
+              alt="RECOVEN Logo"
+              className="mx-auto w-36"
+            />
+          </div>
+          <h2 className="mt-0 border-b-2 border-gray-100 pb-3 text-lg font-bold text-emerald-600">
+            Emisión de Certificado Ambiental Oficial
+          </h2>
+          <p className="mt-4 text-sm">
+            Estimado equipo de <strong>{cert.empresa.nombre}</strong>,
+          </p>
+          <p className="mt-2 text-sm">
+            Cordial saludo por parte del equipo técnico y administrativo de{" "}
+            <strong>RECOVEN ECA SAS ESP</strong>.
+          </p>
+          <p className="mt-2 text-sm">
+            De manera formal y en cumplimiento de los estándares operativos, adjunto a este mensaje
+            encontrará el{" "}
+            <strong>
+              {isPoda
+                ? "Certificado de Manejo y Disposición Final de Residuos Orgánicos Aprovechables"
+                : "Certificado de Manejo y Disposición Final de Residuos"}
+            </strong>{" "}
+            {isPoda
+              ? "correspondiente a las actividades de poda ejecutadas en las zonas de recolección autorizadas."
+              : "correspondiente a los proyectos corporativos especiales y de materiales diversos procesados en nuestras plantas de clasificación."}
+          </p>
+          <div className="my-5 rounded-lg border border-dashed border-emerald-500 bg-gray-50 p-5 text-center">
+            <p className="m-0 mb-2.5 text-sm font-bold text-emerald-800">
+              🔍 Verificación Digital con Código QR
+            </p>
+            <p className="m-0 mb-4 text-xs text-gray-600">
+              Escanee el siguiente código QR con la cámara de su dispositivo móvil para acceder al
+              documento oficial guardado en nuestro servidor seguro:
+            </p>
+            {cert.urlArchivo ? (
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=059669&data=${encodeURIComponent(cert.urlArchivo)}`}
+                alt="Código QR del Certificado"
+                width={180}
+                height={180}
+                className="mx-auto rounded-md border border-gray-200 bg-white p-1.5"
+              />
+            ) : (
+              <p className="text-xs text-gray-400">
+                (QR no disponible — no hay URL de archivo registrada)
+              </p>
+            )}
+            {cert.urlArchivo && (
+              <p className="mt-3 text-xs">
+                <a
+                  href={cert.urlArchivo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-medium text-emerald-600 underline"
+                >
+                  O haga clic aquí para abrir/descargar el certificado
+                </a>
+              </p>
+            )}
+          </div>
+          <div className="my-5 rounded-r border-l-4 border-emerald-500 bg-gray-50 p-4">
+            <p className="m-0 text-xs font-medium text-gray-600">
+              ℹ️ El documento oficial firmado ha sido anexado directamente a este correo electrónico
+              como archivo adjunto en formato digital para su descarga, auditoría y almacenamiento
+              local corporativo.
+            </p>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-gray-400">
+            Agradecemos su confianza en nuestros servicios orientados al desarrollo de la economía
+            circular, la transformación ecológica y la gestión ambiental responsable bajo el
+            estricto cumplimiento de la normativa legal vigente de la República de Colombia.
+          </p>
+          <hr className="my-5 border-0 border-t border-gray-200" />
+          <div className="space-y-1 text-center text-[11px] text-gray-400">
+            <p className="m-0 font-bold text-gray-600">RECOVEN ECA SAS ESP</p>
+            <p className="m-0">Barranquilla, Atlántico, Colombia</p>
+            <p className="mt-2 font-medium text-amber-600">
+              ⚠️ Por favor, no responda a este correo electrónico, es una notificación automatizada
+              despachada por los sistemas centrales.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="border-b border-gray-200 pb-5">
@@ -437,7 +617,8 @@ export default function DocumentsManager() {
           <FaHistory className="text-gray-700" /> Historial de Certificados Despachados
         </h2>
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
+          {/* Tabla normal — solo desde md hacia arriba */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-xs font-bold text-gray-500 uppercase">
@@ -470,57 +651,11 @@ export default function DocumentsManager() {
                             <div className="font-bold text-gray-900">{cert.empresa.nombre}</div>
                             <div className="text-xs text-gray-400">{cert.empresa.correo}</div>
                           </td>
-                          <td className="p-4">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
-                                isPoda
-                                  ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                                  : "border-blue-100 bg-blue-50 text-blue-700"
-                              }`}
-                            >
-                              {isPoda ? "🍃 PODA" : "📦 RESIDUOS"}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
-                                ESTADO_CERT_COLORS[cert.estado] ??
-                                "border-gray-100 bg-gray-50 text-gray-600"
-                              }`}
-                            >
-                              {cert.estado === "PENDIENTE" && (
-                                <FaSpinner className="animate-spin" />
-                              )}
-                              {ESTADO_CERT_LABELS[cert.estado] ?? cert.estado}
-                            </span>
-                          </td>
-                          <td className="p-4 font-mono text-xs">
-                            {cert.urlArchivo ? (
-                              <a
-                                href={cert.urlArchivo}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1.5 font-medium text-emerald-600 hover:underline"
-                              >
-                                <FaFilePdf className="text-sm text-emerald-500" />
-                                <span className="max-w-90 truncate">{cert.nombreArchivo}</span>
-                              </a>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 text-gray-400">
-                                <FaFilePdf className="text-sm text-gray-300" />
-                                <span className="max-w-90 truncate">{cert.nombreArchivo}</span>
-                              </span>
-                            )}
-                          </td>
+                          <td className="p-4">{renderBadgeTipo(isPoda)}</td>
+                          <td className="p-4">{renderBadgeEstado(cert)}</td>
+                          <td className="p-4 font-mono text-xs">{renderDocumentoLink(cert)}</td>
                           <td className="p-4 text-xs font-medium text-gray-500">
-                            {new Date(cert.fechaEnvio).toLocaleDateString("es-CO", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatearFechaEnvio(cert.fechaEnvio)}
                           </td>
                           <td className="p-4 text-center">
                             <button className="text-gray-400 transition-transform duration-200 group-hover:text-gray-600 focus:outline-none">
@@ -532,128 +667,7 @@ export default function DocumentsManager() {
                           <tr className="bg-gray-50/40">
                             <td colSpan={6} className="border-t border-gray-100 p-0">
                               <div className="px-6 py-4">
-                                {cert.estado === "FALLIDO" ? (
-                                  <div className="mx-auto my-2 max-w-2xl rounded-xl border border-red-200 bg-red-50 p-6">
-                                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-red-500 uppercase">
-                                      <FaExclamationTriangle /> Este envío falló
-                                    </div>
-                                    <p className="text-sm text-red-800">
-                                      {cert.errorDetalle ||
-                                        "No se pudo completar el envío. Revisa el correo de alerta para más detalle."}
-                                    </p>
-                                  </div>
-                                ) : cert.estado === "PENDIENTE" ? (
-                                  <div className="mx-auto my-2 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-6">
-                                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-amber-600 uppercase">
-                                      <FaSpinner className="animate-spin" /> Este envío sigue en
-                                      proceso
-                                    </div>
-                                    <p className="text-sm text-amber-800">
-                                      Si lleva más de unos minutos así, probablemente el proceso se
-                                      interrumpió — revisa si llegó un correo de alerta.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wider text-gray-400 uppercase">
-                                      Vista previa del correo electrónico enviado
-                                    </div>
-                                    <div className="mx-auto my-2 max-w-2xl rounded-xl border border-gray-200 bg-white p-6 font-sans text-gray-800 shadow-sm">
-                                      <div className="mb-6 text-center">
-                                        <img
-                                          src="https://recovenesp.com/assets/img/logo.png"
-                                          alt="RECOVEN Logo"
-                                          className="mx-auto w-36"
-                                        />
-                                      </div>
-                                      <h2 className="mt-0 border-b-2 border-gray-100 pb-3 text-lg font-bold text-emerald-600">
-                                        Emisión de Certificado Ambiental Oficial
-                                      </h2>
-                                      <p className="mt-4 text-sm">
-                                        Estimado equipo de <strong>{cert.empresa.nombre}</strong>,
-                                      </p>
-                                      <p className="mt-2 text-sm">
-                                        Cordial saludo por parte del equipo técnico y administrativo
-                                        de <strong>RECOVEN ECA SAS ESP</strong>.
-                                      </p>
-                                      <p className="mt-2 text-sm">
-                                        De manera formal y en cumplimiento de los estándares
-                                        operativos, adjunto a este mensaje encontrará el{" "}
-                                        <strong>
-                                          {isPoda
-                                            ? "Certificado de Manejo y Disposición Final de Residuos Orgánicos Aprovechables"
-                                            : "Certificado de Manejo y Disposición Final de Residuos"}
-                                        </strong>{" "}
-                                        {isPoda
-                                          ? "correspondiente a las actividades de poda ejecutadas en las zonas de recolección autorizadas."
-                                          : "correspondiente a los proyectos corporativos especiales y de materiales diversos procesados en nuestras plantas de clasificación."}
-                                      </p>
-                                      <div className="my-5 rounded-lg border border-dashed border-emerald-500 bg-gray-50 p-5 text-center">
-                                        <p className="m-0 mb-2.5 text-sm font-bold text-emerald-800">
-                                          🔍 Verificación Digital con Código QR
-                                        </p>
-                                        <p className="m-0 mb-4 text-xs text-gray-600">
-                                          Escanee el siguiente código QR con la cámara de su
-                                          dispositivo móvil para acceder al documento oficial
-                                          guardado en nuestro servidor seguro:
-                                        </p>
-                                        {cert.urlArchivo ? (
-                                          <img
-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=059669&data=${encodeURIComponent(cert.urlArchivo)}`}
-                                            alt="Código QR del Certificado"
-                                            width={180}
-                                            height={180}
-                                            className="mx-auto rounded-md border border-gray-200 bg-white p-1.5"
-                                          />
-                                        ) : (
-                                          <p className="text-xs text-gray-400">
-                                            (QR no disponible — no hay URL de archivo registrada)
-                                          </p>
-                                        )}
-                                        {cert.urlArchivo && (
-                                          <p className="mt-3 text-xs">
-                                            <a
-                                              href={cert.urlArchivo}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              onClick={(e) => e.stopPropagation()}
-                                              className="font-medium text-emerald-600 underline"
-                                            >
-                                              O haga clic aquí para abrir/descargar el certificado
-                                            </a>
-                                          </p>
-                                        )}
-                                      </div>
-                                      <div className="my-5 rounded-r border-l-4 border-emerald-500 bg-gray-50 p-4">
-                                        <p className="m-0 text-xs font-medium text-gray-600">
-                                          ℹ️ El documento oficial firmado ha sido anexado
-                                          directamente a este correo electrónico como archivo
-                                          adjunto en formato digital para su descarga, auditoría y
-                                          almacenamiento local corporativo.
-                                        </p>
-                                      </div>
-                                      <p className="mt-4 text-xs leading-relaxed text-gray-400">
-                                        Agradecemos su confianza en nuestros servicios orientados al
-                                        desarrollo de la economía circular, la transformación
-                                        ecológica y la gestión ambiental responsable bajo el
-                                        estricto cumplimiento de la normativa legal vigente de la
-                                        República de Colombia.
-                                      </p>
-                                      <hr className="my-5 border-0 border-t border-gray-200" />
-                                      <div className="space-y-1 text-center text-[11px] text-gray-400">
-                                        <p className="m-0 font-bold text-gray-600">
-                                          RECOVEN ECA SAS ESP
-                                        </p>
-                                        <p className="m-0">Barranquilla, Atlántico, Colombia</p>
-                                        <p className="mt-2 font-medium text-amber-600">
-                                          ⚠️ Por favor, no responda a este correo electrónico, es
-                                          una notificación automatizada despachada por los sistemas
-                                          centrales.
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </>
-                                )}
+                                {renderContenidoExpandido(cert, isPoda)}
                               </div>
                             </td>
                           </tr>
@@ -664,6 +678,50 @@ export default function DocumentsManager() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Tarjetas — solo en mobile. Mismo contenido expandible que la
+              tabla (renderContenidoExpandido), solo con otra disposición
+              en la parte de arriba de cada tarjeta. */}
+          <div className="divide-y divide-gray-100 md:hidden">
+            {history.length === 0 ? (
+              <p className="py-6 text-center text-gray-400">
+                No se registran certificados emitidos recientemente.
+              </p>
+            ) : (
+              history.map((cert) => {
+                const isPoda = cert.tipo === "PODA";
+                const isExpanded = expandedId === cert.id;
+                return (
+                  <div key={cert.id}>
+                    <div className="cursor-pointer p-4" onClick={() => toggleExpand(cert.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-gray-900">{cert.empresa.nombre}</p>
+                          <p className="truncate text-xs text-gray-400">{cert.empresa.correo}</p>
+                        </div>
+                        <button className="shrink-0 text-gray-400" aria-label="Ver detalle">
+                          {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {renderBadgeTipo(isPoda)}
+                        {renderBadgeEstado(cert)}
+                      </div>
+                      <div className="mt-2 font-mono text-xs">{renderDocumentoLink(cert)}</div>
+                      <div className="mt-1 text-xs font-medium text-gray-500">
+                        {formatearFechaEnvio(cert.fechaEnvio)}
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 bg-gray-50/40 px-4 py-4">
+                        {renderContenidoExpandido(cert, isPoda)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>

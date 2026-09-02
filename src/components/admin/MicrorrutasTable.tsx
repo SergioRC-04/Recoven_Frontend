@@ -63,9 +63,53 @@ export default function MicrorrutasTable({
       ]
     : microrrutas;
 
+  // Botones de acción — compartidos entre la fila de tabla (desktop) y la
+  // tarjeta (mobile) para no duplicar esta lógica dos veces.
+  const renderAcciones = (mr: MicrorrutaProperties, isEditingThis: boolean) => (
+    <>
+      <button
+        onClick={() => onEdit(mr)}
+        disabled={disabled}
+        title="Editar datos"
+        className="text-blue-600 transition hover:text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <FaEdit />
+      </button>
+      <button
+        onClick={() => onEditGeometria(mr)}
+        disabled={disabled}
+        title="Editar trazo en el mapa"
+        className={`transition hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40 ${
+          isEditingThis ? "text-amber-700" : "text-amber-500"
+        }`}
+      >
+        {isEditingThis ? <FaCheckCircle /> : <FaDrawPolygon />}
+      </button>
+      <span className="text-xs text-gray-300">|</span>
+      <button
+        onClick={() => onDelete(mr)}
+        disabled={disabled}
+        title="Eliminar"
+        className="text-red-600 transition hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <FaTrash />
+      </button>
+      <span className="text-xs text-gray-300">|</span>
+      <button
+        onClick={() => onGenerarReporte(mr)}
+        disabled={disabled || generandoReporteId === mr.id}
+        title="Generar hoja de ruta (PDF)"
+        className="text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {generandoReporteId === mr.id ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
+      </button>
+    </>
+  );
+
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
+      {/* Tabla normal — solo desde md hacia arriba */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
             <tr>
@@ -119,49 +163,7 @@ export default function MicrorrutasTable({
                     </td>
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-3">
-                        <button
-                          onClick={() => onEdit(mr)}
-                          disabled={disabled}
-                          title="Editar datos"
-                          className="text-blue-600 transition hover:text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <FaEdit />
-                        </button>
-                        <button
-                          onClick={() => onEditGeometria(mr)}
-                          disabled={disabled}
-                          title="Editar trazo en el mapa"
-                          className={`transition hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40 ${
-                            isEditingThis ? "text-amber-700" : "text-amber-500"
-                          }`}
-                        >
-                          {isEditingThis ? <FaCheckCircle /> : <FaDrawPolygon />}
-                        </button>
-                        <span className="text-xs text-gray-300">|</span>
-                        <button
-                          onClick={() => onDelete(mr)}
-                          disabled={disabled}
-                          title="Eliminar"
-                          className="text-red-600 transition hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <FaTrash />
-                        </button>
-                        <span className="text-xs text-gray-300">|</span>
-                        <button
-                          onClick={() => onGenerarReporte(mr)}
-                          disabled={disabled || generandoReporteId === mr.id}
-                          title="Generar hoja de ruta (PDF)"
-                          className="text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {generandoReporteId === mr.id ? (
-                            <FaSpinner className="animate-spin" />
-                          ) : (
-                            <FaFilePdf />
-                          )}
-                        </button>
-                        {/* Espacio reservado para el segundo documento exportable
-                            (pendiente de definir). Agregar aquí un botón más,
-                            mismo patrón que el de arriba. */}
+                        {renderAcciones(mr, isEditingThis)}
                       </div>
                     </td>
                   </tr>
@@ -170,6 +172,63 @@ export default function MicrorrutasTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Tarjetas — solo en mobile. La tarjeta completa sigue seleccionando
+          la microrruta al tocarla, igual que la fila en desktop; el bloque
+          de acciones lleva su propio stopPropagation por la misma razón. */}
+      <div className="divide-y divide-gray-100 md:hidden">
+        {microrrutas.length === 0 ? (
+          <p className="py-6 text-center text-gray-400">
+            No hay microrrutas registradas con este filtro.
+          </p>
+        ) : (
+          microrrutasOrdenadas.map((mr) => {
+            const isEditingThis = editingGeometriaId === mr.id;
+            const isSelected = selectedId === mr.id;
+            return (
+              <div
+                key={mr.id}
+                onClick={() => onSelectRow(mr)}
+                className={`cursor-pointer p-4 transition ${
+                  isEditingThis
+                    ? "bg-amber-50/70"
+                    : isSelected
+                      ? "bg-red-50/70 ring-1 ring-red-300 ring-inset"
+                      : "active:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-gray-900">{mr.nombre}</p>
+                    <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                      {TIPO_MICRORRUTA_LABELS[mr.tipo] ?? mr.tipo}
+                    </span>
+                  </div>
+                  <span className="shrink-0 font-mono text-xs text-gray-500">
+                    {mr.longitudKm != null
+                      ? `${parseFloat(String(mr.longitudKm)).toFixed(2)} km`
+                      : "—"}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <span>{formatearFecha(mr.fechaOperacion)}</span>
+                  <span>
+                    {mr.frecuencia}x — {mr.diasFrecuencia}
+                  </span>
+                </div>
+
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-3 flex items-center justify-end gap-3 border-t border-gray-100 pt-3"
+                >
+                  {renderAcciones(mr, isEditingThis)}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

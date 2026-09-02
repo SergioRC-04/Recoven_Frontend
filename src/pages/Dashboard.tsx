@@ -11,6 +11,8 @@ import {
   FaClipboardList,
   FaRoute,
   FaRecycle,
+  FaBars,
+  FaTimes,
 } from "react-icons/fa";
 import PqrsdfTable from "../components/admin/PqrsdfTable";
 import AdminMicrorrutas from "../components/admin/AdminMicrorrutas";
@@ -50,6 +52,10 @@ function formatearTiempoRestante(ms: number): string {
 export default function Dashboard() {
   const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("leads");
+  // Controla el menú tipo "drawer" solo en mobile. En desktop no se usa
+  // (el sidebar siempre está visible ahí), pero lo dejamos en false por
+  // defecto para que, si alguien reduce la ventana, no aparezca ya abierto.
+  const [menuAbierto, setMenuAbierto] = useState(false);
   // null mientras no se ha podido leer el token/exp — el contador no se
   // muestra en ese caso, en vez de mostrar un "00:00" engañoso.
   const [tiempoRestanteMs, setTiempoRestanteMs] = useState<number | null>(null);
@@ -91,22 +97,61 @@ export default function Dashboard() {
     { id: "recyclers", label: "Recicladores", icon: FaRecycle },
   ];
 
+  // Selecciona la pestaña y, en mobile, cierra el drawer de una vez — en
+  // desktop este cierre no importa porque el sidebar nunca usa el drawer.
+  const seleccionarTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setMenuAbierto(false);
+  };
+
   return (
-    // md:h-screen + md:overflow-hidden fuerza a que, en pantallas medianas
-    // en adelante, el layout ocupe exactamente el alto del viewport — sin
-    // esto, el contenedor crecía tanto como el contenido de <main>, y como
-    // <aside> se estira para igualar la altura de su hermano en el flex
-    // row, terminaba tan alto como toda la página, empujando el botón de
-    // cerrar sesión (al final de su columna interna) muy por debajo de lo
-    // visible. min-h-screen se mantiene sin el prefijo md: para que en
-    // mobile (donde el sidebar y el contenido se apilan verticalmente) la
-    // página siga desplazándose normal, como ya funcionaba.
     <div className="flex min-h-screen flex-col md:h-screen md:flex-row md:overflow-hidden">
-      {/* Sidebar */}
-      <aside className="flex w-full shrink-0 flex-col border-r border-gray-800 bg-gray-900 text-white md:w-64">
-        <div className="border-b border-gray-800 p-6">
-          <h2 className="text-xl font-black tracking-wider text-emerald-500">RECOVEN ADMIN</h2>
-          <p className="mt-0.5 text-xs text-gray-400">Panel de Control v2.0</p>
+      {/* Barra superior — solo en mobile. Sticky para que el título quede
+          siempre visible aunque se haga scroll del contenido de abajo. */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-4 py-3 text-white md:hidden">
+        <button
+          onClick={() => setMenuAbierto(true)}
+          aria-label="Abrir menú"
+          className="rounded-lg p-2 text-gray-300 transition hover:bg-gray-800 hover:text-white"
+        >
+          <FaBars className="text-lg" />
+        </button>
+        <div>
+          <h2 className="text-lg font-black tracking-wider text-emerald-500">RECOVEN ADMIN</h2>
+          <p className="text-[10px] text-gray-400">Panel de Control v2.0</p>
+        </div>
+      </header>
+
+      {/* Fondo oscuro — solo en mobile, solo mientras el drawer está
+          abierto. Tocarlo cierra el menú, igual que el botón de cerrar. */}
+      {menuAbierto && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMenuAbierto(false)}
+        />
+      )}
+
+      {/* Sidebar. En mobile es un drawer superpuesto (fixed, se desliza
+          desde la izquierda con translate-x) que no empuja ni reduce el
+          contenido — en desktop, las clases md: lo devuelven a ser el
+          sidebar estático de siempre, sin overlay ni animación. */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80%] flex-col border-r border-gray-800 bg-gray-900 text-white transition-transform duration-200 ease-out md:static md:z-auto md:w-64 md:max-w-none md:shrink-0 md:translate-x-0 ${
+          menuAbierto ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-gray-800 p-6">
+          <div>
+            <h2 className="text-xl font-black tracking-wider text-emerald-500">RECOVEN ADMIN</h2>
+            <p className="mt-0.5 text-xs text-gray-400">Panel de Control v2.0</p>
+          </div>
+          <button
+            onClick={() => setMenuAbierto(false)}
+            aria-label="Cerrar menú"
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-800 hover:text-white md:hidden"
+          >
+            <FaTimes />
+          </button>
         </div>
         <nav className="flex-1 space-y-2 p-4">
           {tabs.map((tab) => {
@@ -115,7 +160,7 @@ export default function Dashboard() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as Tab)}
+                onClick={() => seleccionarTab(tab.id as Tab)}
                 className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition ${
                   isActive
                     ? "bg-emerald-600 text-white"
