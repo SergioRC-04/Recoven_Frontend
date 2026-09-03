@@ -16,6 +16,7 @@ import {
   exportarMicrorrutasExcel,
 } from "../../services/microrutas";
 import { getRecyclersByTab } from "../../services/recyclers";
+import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
 import type {
   Localidad,
   Barrio,
@@ -95,6 +96,12 @@ export default function AdminMicrorrutas() {
   // guardado por el backend (ver MicrorrutaBarrio).
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
 
+  // Lista COMPLETA de microrrutas, sin ningún filtro — independiente de
+  // microrrutasGeo (que sí respeta el filtro activo). Se usa únicamente
+  // para calcular cuántas rutas tiene cada localidad/barrio y mostrarlo
+  // junto a cada opción de los selects de filtro (ver calcularConteosMicrorrutas).
+  const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
+
   // Contador que se incrementa para forzar una recarga de microrrutas sin
   // necesidad de pasar una función async como dependencia de useEffect.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -123,6 +130,19 @@ export default function AdminMicrorrutas() {
       .then(setRecyclers)
       .catch((err) => console.error("Error cargando recicladores para la tabla:", err));
   }, []);
+
+  // Todas las microrrutas, sin filtro — solo para los conteos de los
+  // selects de Localidad/Barrio. Depende de refreshKey (no de los
+  // filtros activos) para que los conteos se actualicen al crear, editar
+  // o eliminar una ruta, sin importar qué filtro esté aplicado en ese
+  // momento en la tabla/mapa.
+  useEffect(() => {
+    getMicrorrutas()
+      .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
+      .catch((err) =>
+        console.error("Error cargando el total de microrrutas para los filtros:", err)
+      );
+  }, [refreshKey]);
 
   // Barrios según la localidad seleccionada: un solo fetch que alimenta
   // tanto el selector (lista liviana) como el mapa (GeoJSON completo).
@@ -213,6 +233,23 @@ export default function AdminMicrorrutas() {
   }, [selectedLocalidad, selectedBarrio, refreshKey]);
 
   const microrrutasList = microrrutasGeo?.features?.map((f) => f.properties) ?? [];
+
+  // Conteos para los selects de Localidad/Barrio, calculados sobre
+  // todasLasMicrorrutas (sin filtro) — no sobre microrrutasList, que
+  // cambia según el filtro activo y daría un conteo incorrecto.
+  const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
+  const localidadesOrdenadas = ordenarPorConteo(
+    localidades,
+    conteosMicrorrutas.porLocalidad,
+    (l) => l.identificador,
+    (l) => l.nombre
+  );
+  const barriosOrdenados = ordenarPorConteo(
+    barrios,
+    conteosMicrorrutas.porBarrio,
+    (b) => b.identificador,
+    (b) => b.nombre_barrio
+  );
 
   // Nombre del trabajador asignado a cada microrruta, por id — un
   // reciclador puede tener varias rutas, así que se recorre cada uno una
@@ -373,9 +410,10 @@ export default function AdminMicrorrutas() {
             className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
           >
             <option value="">Todas</option>
-            {localidades.map((loc) => (
+            {localidadesOrdenadas.map(({ item: loc, count }) => (
               <option key={loc.identificador} value={loc.identificador}>
                 {loc.nombre}
+                {count > 0 ? ` (${count})` : ""}
               </option>
             ))}
           </select>
@@ -391,9 +429,10 @@ export default function AdminMicrorrutas() {
             className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
           >
             <option value="">Todos</option>
-            {barrios.map((b) => (
+            {barriosOrdenados.map(({ item: b, count }) => (
               <option key={b.identificador} value={b.identificador}>
                 {b.nombre_barrio}
+                {count > 0 ? ` (${count})` : ""}
               </option>
             ))}
           </select>

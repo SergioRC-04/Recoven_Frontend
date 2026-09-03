@@ -27,15 +27,20 @@ const DATA_PROJ = "EPSG:4326";
 const CENTER_BARRANQUILLA = fromLonLat([-74.7964, 10.9878]);
 
 // Capa de referencia (barrios de la localidad filtrada) — solo contexto
-// visual, sin interacción. Solo borde, sin relleno.
+// visual, sin interacción. Verde, tono suave y sin relleno: es solo un
+// límite de referencia, no el que está seleccionado en el filtro.
 const BARRIOS_REF_STYLE = new Style({
-  stroke: new Stroke({ color: "#7c3aed", width: 2 }),
+  stroke: new Stroke({ color: "rgba(16, 185, 129, 0.6)", width: 1.5 }),
 });
 
-// Barrio actualmente seleccionado en el filtro: mismo color, borde más
-// grueso para distinguirlo del resto — sin relleno tampoco.
+// Barrio actualmente seleccionado en el filtro (no la localidad completa):
+// mismo verde, borde sólido más marcado y un relleno leve — mismo criterio
+// visual que usa el mapa público para resaltar un barrio, pero con menos
+// intensidad (relleno al 15%, no al 25%) para no competir tanto con el
+// resto de capas del editor.
 const BARRIO_SELECTED_STYLE = new Style({
-  stroke: new Stroke({ color: "#7c3aed", width: 3.5 }),
+  stroke: new Stroke({ color: "#10b981", width: 2.5 }),
+  fill: new Fill({ color: "rgba(16, 185, 129, 0.15)" }),
 });
 
 const MICRORRUTA_STYLE = new Style({
@@ -51,12 +56,28 @@ const MICRORRUTA_EDITING_STYLE = new Style({
   }),
 });
 
-// Rojo, a propósito: es el único color de la paleta que no está tomado por
-// ningún otro significado (violeta=barrios, dorado=vías, azul=microrrutas,
-// ámbar=editando, verde=trazo pendiente) — para que "seleccionada para ver"
-// nunca se confunda con "en edición".
+// Reemplaza a MICRORRUTA_STYLE en el resto de rutas mientras se traza una
+// nueva o se redibuja el trazo de una existente, para que no compitan
+// visualmente con lo que se está dibujando en ese momento. La que está en
+// edición sigue viéndose en ámbar (MICRORRUTA_EDITING_STYLE) tal cual, sin
+// atenuar. Opacidad al 40%: lo bastante tenue para no distraer, pero
+// todavía claramente visible (una versión anterior, al 18%, quedó casi
+// invisible).
+const MICRORRUTA_SOFT_STYLE = new Style({
+  stroke: new Stroke({ color: "rgba(37, 99, 235, 0.4)", width: 3 }),
+});
+
+// Rojo, a propósito: es el color que menos se presta a confusión con el
+// resto de la paleta (verde=barrios/trazo pendiente, dorado=vías,
+// azul=microrrutas, ámbar=editando) — para que "seleccionada para ver"
+// nunca se confunda con "en edición". zIndex alto: sin esto, en los cruces
+// entre dos microrrutas el orden de pintado dentro de la misma capa podía
+// dejar el rojo por debajo del azul de la otra según cuál se procesara
+// primero — con un zIndex explícito, la seleccionada siempre gana, sin
+// depender de ese orden interno.
 const MICRORRUTA_SELECTED_STYLE = new Style({
   stroke: new Stroke({ color: "#dc2626", width: 5 }),
+  zIndex: 10,
 });
 
 const SKETCH_STYLE = new Style({
@@ -64,11 +85,11 @@ const SKETCH_STYLE = new Style({
 });
 
 // Vías — capa de referencia para guiar el trazado (snap), no interactiva
-// por sí sola. Dorado/oliva a propósito: no se confunde con el violeta de
-// barrios, el azul de microrrutas, el ámbar de edición ni el verde del
-// trazo pendiente.
+// por sí sola. Mismo dorado/oliva de siempre (para no perder la
+// convención de color), con opacidad moderada: una versión anterior, al
+// 35%, quedó demasiado tenue para servir de referencia real.
 const VIAS_STYLE = new Style({
-  stroke: new Stroke({ color: "#ca8a04", width: 1.5 }),
+  stroke: new Stroke({ color: "rgba(202, 138, 4, 0.55)", width: 1 }),
 });
 
 interface MicrorrutaMapEditorProps {
@@ -148,22 +169,38 @@ export default function MicrorrutaMapEditor({
   // edición. null mientras no se ha terminado de dibujar todavía.
   const [editSketchGeojson, setEditSketchGeojson] = useState<LineStringGeoJson | null>(null);
 
-  // Inicializar mapa (una vez)
+  // Inicializar mapa (una vez). zIndex explícito en cada capa (en vez de
+  // depender solo del orden dentro de `layers`) para poder reordenarlas
+  // dinámicamente más adelante sin recrear el mapa — ver el efecto de
+  // reordenamiento mientras se dibuja/edita, más abajo. Los valores de
+  // aquí son el orden "normal" (sin dibujar/editar): vías, barrios y
+  // microrrutas de abajo hacia arriba, con pendingLayer siempre encima de
+  // todo.
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    const baseLayer = new TileLayer({ source: new OSM() });
-    const barriosLayer = new VectorLayer({ source: new VectorSource(), style: BARRIOS_REF_STYLE });
+    const baseLayer = new TileLayer({ source: new OSM(), zIndex: 0 });
     const viasLayer = new VectorLayer({
       source: new VectorSource(),
       style: VIAS_STYLE,
       visible: false,
+      zIndex: 1,
+    });
+    const barriosLayer = new VectorLayer({
+      source: new VectorSource(),
+      style: BARRIOS_REF_STYLE,
+      zIndex: 2,
     });
     const microrrutasLayer = new VectorLayer({
       source: new VectorSource(),
       style: MICRORRUTA_STYLE,
+      zIndex: 3,
     });
-    const pendingLayer = new VectorLayer({ source: new VectorSource(), style: SKETCH_STYLE });
+    const pendingLayer = new VectorLayer({
+      source: new VectorSource(),
+      style: SKETCH_STYLE,
+      zIndex: 4,
+    });
 
     barriosLayerRef.current = barriosLayer;
     viasLayerRef.current = viasLayer;
@@ -173,13 +210,9 @@ export default function MicrorrutaMapEditor({
 
     const map = new Map({
       target: mapContainer.current,
-      // barriosLayer va DESPUÉS de viasLayer a propósito: su estilo es solo
-      // borde (sin relleno), así que reordenarla aquí no tapa ni oscurece
-      // las vías — pero sí evita que el borde del barrio quede escondido
-      // debajo de la maraña de calles cuando se muestran todas las vías de
-      // la ciudad (ver conversación sobre la carga de vías). microrrutas y
-      // pendingLayer siguen por encima de todo: son lo que el usuario está
-      // viendo/dibujando activamente.
+      // El orden real de pintado ya no depende de esta lista (cada capa
+      // tiene su propio zIndex) — se mantiene aquí solo como el orden de
+      // agregado al mapa, sin efecto visual por sí mismo.
       layers: [baseLayer, viasLayer, barriosLayer, microrrutasLayer, pendingLayer],
       view: new View({ center: CENTER_BARRANQUILLA, zoom: 12 }),
     });
@@ -196,6 +229,51 @@ export default function MicrorrutaMapEditor({
   // desde el efecto de vías sin declararlo como dependencia.
   useEffect(() => {
     dibujandoOEditandoRef.current = drawing || editingGeometriaId !== null;
+  }, [drawing, editingGeometriaId]);
+
+  // Reordena las capas mientras se dibuja una ruta nueva o se redibuja una
+  // existente: las microrrutas ya guardadas (atenuadas, ver el estilo más
+  // abajo) pasan por debajo de vías y barrios, dejando el trazo que se
+  // está dibujando (pendingLayer, zIndex fijo en 4) como lo único
+  // realmente destacado en pantalla. Al terminar, vuelve al orden normal
+  // (microrrutas arriba de vías/barrios).
+  useEffect(() => {
+    const viasLayer = viasLayerRef.current;
+    const barriosLayer = barriosLayerRef.current;
+    const microrrutasLayer = microrrutasLayerRef.current;
+    if (!viasLayer || !barriosLayer || !microrrutasLayer) return;
+
+    const trazandoOEditando = drawing || editingGeometriaId !== null;
+
+    if (trazandoOEditando) {
+      microrrutasLayer.setZIndex(1);
+      viasLayer.setZIndex(2);
+      barriosLayer.setZIndex(3);
+    } else {
+      viasLayer.setZIndex(1);
+      barriosLayer.setZIndex(2);
+      microrrutasLayer.setZIndex(3);
+    }
+  }, [drawing, editingGeometriaId]);
+
+  // Estilo de la capa de microrrutas: en edición se ve en ámbar
+  // (MICRORRUTA_EDITING_STYLE); mientras se traza/edita cualquier ruta, el
+  // resto se atenúa (MICRORRUTA_SOFT_STYLE) para no competir visualmente
+  // con el trazo en curso; en cualquier otro momento, color normal. La
+  // selección por clic (rojo) la sigue aplicando la propia interacción
+  // Select más abajo — no se solapa con esto porque Select se desactiva
+  // por completo mientras se dibuja/edita (ver ese efecto).
+  useEffect(() => {
+    const microrrutasLayer = microrrutasLayerRef.current;
+    if (!microrrutasLayer) return;
+
+    const atenuar = drawing || editingGeometriaId !== null;
+
+    microrrutasLayer.setStyle((feature) => {
+      if (feature.get("id") === editingGeometriaId) return MICRORRUTA_EDITING_STYLE;
+      if (atenuar) return MICRORRUTA_SOFT_STYLE;
+      return MICRORRUTA_STYLE;
+    });
   }, [drawing, editingGeometriaId]);
 
   // Refrescar la fuente de barrios cuando llega nueva data del padre.
@@ -319,7 +397,10 @@ export default function MicrorrutaMapEditor({
     // produciendo un doble salto de zoom.
   }, [barrioCod, localidadCod, barriosGeoJson]);
 
-  // Refrescar la capa de microrrutas cuando cambian los datos del padre
+  // Refrescar la capa de microrrutas cuando cambian los datos del padre.
+  // El estilo NO se toca aquí (lo decide el efecto dedicado de más
+  // arriba) — este efecto solo se ocupa de la fuente de datos y el
+  // encuadre de cámara.
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
     const map = mapRef.current;
@@ -337,9 +418,6 @@ export default function MicrorrutaMapEditor({
         }).readFeatures(microrrutasGeoJson),
       });
       microrrutasLayer.setSource(source);
-      microrrutasLayer.setStyle((feature) =>
-        feature.get("id") === editingGeometriaId ? MICRORRUTA_EDITING_STYLE : MICRORRUTA_STYLE
-      );
 
       // Esta capa solo controla el encuadre cuando NO hay un filtro de
       // localidad/barrio activo — si lo hay, el efecto de barrios/localidad
@@ -393,15 +471,12 @@ export default function MicrorrutaMapEditor({
     }
   }, [pendingGeojson, editSketchGeojson, editingGeometriaId]);
 
-  // Restyle + encuadre cuando cambia cuál microrruta está en edición de geometría
+  // Encuadre (sin restyle, ya lo hace el efecto dedicado de más arriba)
+  // cuando cambia cuál microrruta está en edición de geometría.
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
     const map = mapRef.current;
     if (!microrrutasLayer) return;
-
-    microrrutasLayer.setStyle((feature) =>
-      feature.get("id") === editingGeometriaId ? MICRORRUTA_EDITING_STYLE : MICRORRUTA_STYLE
-    );
 
     if (editingGeometriaId !== null && map) {
       const feature = microrrutasLayer

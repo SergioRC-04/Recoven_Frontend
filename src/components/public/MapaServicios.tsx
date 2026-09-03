@@ -21,6 +21,7 @@ import {
   getBarriosGeoJson,
 } from "../../services/geo";
 import { getMicrorrutas } from "../../services/microrutas";
+import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
 import { DIAS_SEMANA, DIA_EVENTUAL, type MicrorrutaProperties } from "../../types/microrruta";
 import type { Localidad, Barrio } from "../../types/geo";
 
@@ -134,6 +135,11 @@ export default function MapaServicios() {
   // llena con los mismos datos que ya se piden para la capa del mapa, con
   // el mismo filtro activo, no es una petición aparte.
   const [microrrutasList, setMicrorrutasList] = useState<MicrorrutaProperties[]>([]);
+  // Lista COMPLETA de microrrutas, sin ningún filtro — independiente de
+  // microrrutasList (que sí respeta el filtro activo). Se usa únicamente
+  // para calcular cuántas rutas tiene cada localidad/barrio y mostrarlo
+  // junto a cada opción de los selects de filtro.
+  const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
   // Microrruta resaltada al hacer clic en ella en el mapa — se refleja en
   // la tarjeta correspondiente de la lista de la derecha.
   const [selectedMicrorrutaId, setSelectedMicrorrutaId] = useState<number | null>(null);
@@ -213,6 +219,19 @@ export default function MapaServicios() {
     };
     loadBarrios();
   }, [selectedLocalidad, selectedBarrio]);
+
+  // Todas las microrrutas, sin filtro — solo para los conteos que se
+  // muestran junto a cada opción de los selects de Localidad/Barrio. Se
+  // carga una sola vez: a diferencia del admin, en esta página pública no
+  // hay forma de crear/editar/borrar rutas, así que no hace falta volver a
+  // pedirla más adelante.
+  useEffect(() => {
+    getMicrorrutas()
+      .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
+      .catch((err) =>
+        console.error("Error cargando el total de microrrutas para los filtros:", err)
+      );
+  }, []);
 
   // Determina a qué localidad pertenece un barrio, sin depender de ningún campo del backend:
   // usa el centro del bounding box del barrio y prueba contra cada polígono de localidad ya
@@ -642,6 +661,23 @@ export default function MapaServicios() {
     }
   };
 
+  // Conteos para los selects de Localidad/Barrio, calculados sobre
+  // todasLasMicrorrutas (sin filtro) — no sobre microrrutasList, que
+  // cambia según el filtro activo y daría un conteo incorrecto.
+  const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
+  const localidadesOrdenadas = ordenarPorConteo(
+    localidades,
+    conteosMicrorrutas.porLocalidad,
+    (l) => l.identificador,
+    (l) => l.nombre
+  );
+  const barriosOrdenados = ordenarPorConteo(
+    barrios,
+    conteosMicrorrutas.porBarrio,
+    (b) => b.identificador,
+    (b) => b.nombre_barrio
+  );
+
   return (
     <section className="relative w-full bg-emerald-950 py-12 text-white">
       <div className="container mx-auto px-6">
@@ -697,13 +733,14 @@ export default function MapaServicios() {
               <option value="" className="bg-emerald-950 text-emerald-100">
                 Todas
               </option>
-              {localidades.map((loc) => (
+              {localidadesOrdenadas.map(({ item: loc, count }) => (
                 <option
                   key={loc.identificador}
                   value={loc.identificador}
                   className="bg-emerald-950 text-emerald-100"
                 >
                   {loc.nombre}
+                  {count > 0 ? ` (${count})` : ""}
                 </option>
               ))}
             </select>
@@ -720,13 +757,14 @@ export default function MapaServicios() {
               <option value="" className="bg-emerald-950 text-emerald-100">
                 Todos
               </option>
-              {barrios.map((b) => (
+              {barriosOrdenados.map(({ item: b, count }) => (
                 <option
                   key={b.identificador}
                   value={b.identificador}
                   className="bg-emerald-950 text-emerald-100"
                 >
                   {b.nombre_barrio}
+                  {count > 0 ? ` (${count})` : ""}
                 </option>
               ))}
             </select>
