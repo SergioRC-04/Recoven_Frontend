@@ -7,7 +7,7 @@ import {
   FaFilePdf,
   FaSpinner,
 } from "react-icons/fa";
-import { TIPO_MICRORRUTA_LABELS, type MicrorrutaProperties } from "../../types/microrruta";
+import { formatearDiasFrecuenciaCorto, type MicrorrutaProperties } from "../../types/microrruta";
 
 // Formatea la fecha directo desde el texto ISO, sin construir un objeto
 // Date — new Date(iso).toLocaleDateString() convierte a la zona horaria
@@ -31,6 +31,10 @@ interface MicrorrutasTableProps {
   // id de la microrruta resaltada en el mapa (clic en su trazo). null =
   // ninguna seleccionada.
   selectedId: number | null;
+  // Nombre del trabajador asignado a cada microrruta, por id — resuelto en
+  // el padre (misma búsqueda inversa que ya usa el generador de PDF sobre
+  // la lista completa de recicladores).
+  trabajadorPorMicrorrutaId: Map<number, string>;
   onEdit: (microrruta: MicrorrutaProperties) => void;
   onEditGeometria: (microrruta: MicrorrutaProperties) => void;
   onDelete: (microrruta: MicrorrutaProperties) => void;
@@ -47,6 +51,7 @@ export default function MicrorrutasTable({
   disabled,
   generandoReporteId,
   selectedId,
+  trabajadorPorMicrorrutaId,
   onEdit,
   onEditGeometria,
   onDelete,
@@ -62,6 +67,19 @@ export default function MicrorrutasTable({
         ...microrrutas.filter((mr) => mr.id !== selectedId),
       ]
     : microrrutas;
+
+  const renderTrabajador = (mr: MicrorrutaProperties) => {
+    const nombre = trabajadorPorMicrorrutaId.get(mr.id);
+    return nombre ? nombre : <span className="text-gray-300">Sin asignar</span>;
+  };
+
+  // El barrio ya viene calculado y guardado por el backend (MicrorrutaBarrio)
+  // — una ruta puede tener más de uno si cruza de un barrio a otro de
+  // verdad, no solo si toca el límite de paso.
+  const renderBarrio = (mr: MicrorrutaProperties) => {
+    if (mr.barrios.length === 0) return <span className="text-gray-300">—</span>;
+    return mr.barrios.map((b) => b.barrioNombre).join(", ");
+  };
 
   // Botones de acción — compartidos entre la fila de tabla (desktop) y la
   // tarjeta (mobile) para no duplicar esta lógica dos veces.
@@ -114,17 +132,18 @@ export default function MicrorrutasTable({
           <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
             <tr>
               <th className="p-4">Nombre</th>
-              <th className="p-4">Tipo</th>
+              <th className="p-4 text-center">Tipo</th>
               <th className="p-4">Fecha</th>
-              <th className="p-4">Frecuencia</th>
-              <th className="p-4 text-right">Longitud</th>
+              <th className="p-4">Días</th>
+              <th className="p-4">Trabajador</th>
+              <th className="p-4">Barrio</th>
               <th className="p-4 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {microrrutas.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-400">
+                <td colSpan={7} className="py-6 text-center text-gray-400">
                   No hay microrrutas registradas con este filtro.
                 </td>
               </tr>
@@ -145,21 +164,22 @@ export default function MicrorrutasTable({
                     }`}
                   >
                     <td className="p-4 font-bold text-gray-900">{mr.nombre}</td>
-                    <td className="p-4">
-                      <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                        {TIPO_MICRORRUTA_LABELS[mr.tipo] ?? mr.tipo}
+                    <td className="p-4 text-center">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+                        {mr.tipo}
                       </span>
                     </td>
                     <td className="p-4 text-xs text-gray-500">
                       {formatearFecha(mr.fechaOperacion)}
                     </td>
-                    <td className="p-4 text-gray-600">
-                      {mr.frecuencia}x — {mr.diasFrecuencia}
+                    <td className="p-4 text-xs font-semibold text-gray-600">
+                      {formatearDiasFrecuenciaCorto(mr.diasFrecuencia)}
                     </td>
-                    <td className="p-4 text-right font-mono text-xs text-gray-500">
-                      {mr.longitudKm != null
-                        ? `${parseFloat(String(mr.longitudKm)).toFixed(2)} km`
-                        : "—"}
+                    <td className="max-w-40 truncate p-4 text-xs text-gray-600">
+                      {renderTrabajador(mr)}
+                    </td>
+                    <td className="max-w-72 p-4 text-xs whitespace-normal text-gray-600">
+                      {renderBarrio(mr)}
                     </td>
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-3">
@@ -198,25 +218,33 @@ export default function MicrorrutasTable({
                       : "active:bg-gray-50"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-bold text-gray-900">{mr.nombre}</p>
-                    <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                      {TIPO_MICRORRUTA_LABELS[mr.tipo] ?? mr.tipo}
-                    </span>
-                  </div>
-                  <span className="shrink-0 font-mono text-xs text-gray-500">
-                    {mr.longitudKm != null
-                      ? `${parseFloat(String(mr.longitudKm)).toFixed(2)} km`
-                      : "—"}
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+                    {mr.tipo}
                   </span>
+                  <p className="truncate font-bold text-gray-900">{mr.nombre}</p>
                 </div>
 
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                   <span>{formatearFecha(mr.fechaOperacion)}</span>
-                  <span>
-                    {mr.frecuencia}x — {mr.diasFrecuencia}
+                  <span className="font-semibold text-gray-600">
+                    {formatearDiasFrecuenciaCorto(mr.diasFrecuencia)}
                   </span>
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="block font-bold tracking-wide text-gray-400 uppercase">
+                      Trabajador
+                    </span>
+                    <span className="text-gray-600">{renderTrabajador(mr)}</span>
+                  </div>
+                  <div>
+                    <span className="block font-bold tracking-wide text-gray-400 uppercase">
+                      Barrio
+                    </span>
+                    <span className="text-gray-600">{renderBarrio(mr)}</span>
+                  </div>
                 </div>
 
                 <div

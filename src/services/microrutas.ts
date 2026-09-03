@@ -17,8 +17,9 @@ import type {
 
 /**
  * Lista las microrrutas y las adapta a un GeoJSON FeatureCollection en
- * EPSG:4326 (con longitud calculada en km), que es la forma que consumen
- * el mapa, la tabla y el resto de la app. Admite filtro por barrioCod y/o
+ * EPSG:4326 (con longitud calculada en km y los barrios donde opera cada
+ * una, ya resueltos por el backend), que es la forma que consumen el
+ * mapa, la tabla y el resto de la app. Admite filtro por barrioCod y/o
  * localidadCod.
  *
  * Controller: GET /microrrutas  (@Controller('/microrrutas'), sin guard)
@@ -98,6 +99,9 @@ function toMicrorrutaFeature(item: MicrorrutaApiItem): MicrorrutaFeature | null 
     tipoBarrido: item.tipo_barrido,
     estado: item.estado,
     longitudKm: item.longitud_calculada_km,
+    // Ya viene en camelCase desde el backend (json_build_object en la
+    // consulta) — no hace falta transformar nada aquí.
+    barrios: item.barrios ?? [],
   };
 
   return {
@@ -122,7 +126,9 @@ export async function getMicrorrutasList(): Promise<{ id: number; nombre: string
 // ============================================================
 
 /**
- * Crea una microrruta con su trazo inicial.
+ * Crea una microrruta con su trazo inicial. El backend calcula y guarda
+ * automáticamente el/los barrios donde opera a partir de la geometría —
+ * no hace falta ni es posible enviarlos desde el frontend.
  *
  * Controller: POST /microrrutas  (JwtAuthGuard)
  */
@@ -134,8 +140,9 @@ export async function createMicrorruta(
 
 /**
  * Actualiza los campos del SUI de una microrruta. Si se incluye `geojson`
- * en el payload, el servicio NestJS lo detecta y actualiza también la
- * geometría PostGIS en la misma llamada.
+ * en el payload, el servicio NestJS lo detecta, actualiza también la
+ * geometría PostGIS en la misma llamada, y recalcula el/los barrios de la
+ * ruta a partir del nuevo trazo.
  *
  * Controller: PUT /microrrutas/:id  (JwtAuthGuard)
  */
@@ -149,7 +156,8 @@ export async function updateMicrorruta(
 /**
  * Redibuja únicamente el trazo (geometría) de una microrruta existente.
  * Se llama desde el botón "Guardar Trazo" del mapa, sin tocar los demás
- * campos del SUI.
+ * campos del SUI. También recalcula el/los barrios de la ruta, igual que
+ * updateMicrorruta.
  *
  * Controller: PUT /microrrutas/:id/geometria  (JwtAuthGuard)
  */
@@ -204,23 +212,4 @@ export async function exportarMicrorrutasCapa(
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
-}
-
-export interface UbicacionMicrorruta {
-  barrioCod: string | null;
-  barrioNombre: string | null;
-  localidadCod: string | null;
-  localidadNombre: string | null;
-}
-
-/**
- * Resuelve geométricamente el barrio y la localidad donde cae una
- * microrruta (intersección espacial en PostGIS, no el barrio asignado a
- * un reciclador). Si la ruta cruza varios barrios, el backend devuelve el
- * de mayor longitud de intersección.
- *
- * Controller: GET /microrrutas/:id/ubicacion  (JwtAuthGuard)
- */
-export async function resolverUbicacionMicrorruta(id: number): Promise<UbicacionMicrorruta> {
-  return recovenApi.get(`/microrrutas/${id}/ubicacion`, true);
 }

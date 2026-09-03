@@ -126,6 +126,34 @@ export const DIAS_SEMANA: { value: number; label: string; full: string }[] = [
 
 export const DIA_EVENTUAL = 8;
 
+// Abreviaturas de 2 letras para columnas de tabla angostas (p. ej.
+// MicrorrutasTable) — distintas de DIAS_SEMANA.label (una sola letra), que
+// se usa en otros contextos con aún menos espacio disponible.
+const DIAS_FRECUENCIA_CORTOS: Record<number, string> = {
+  1: "LU",
+  2: "MA",
+  3: "MI",
+  4: "JU",
+  5: "VI",
+  6: "SA",
+  7: "DO",
+};
+
+// Convierte "1-3-5" (formato SUI, ver diasFrecuencia más abajo) en
+// "LU MI VI". El código 8 (Eventual) se muestra como la palabra completa
+// en esa posición, en vez de una abreviatura de 2 letras que no existe.
+export function formatearDiasFrecuenciaCorto(diasFrecuencia: string): string {
+  if (!diasFrecuencia) return "—";
+  return diasFrecuencia
+    .split("-")
+    .map((codigo) => {
+      const num = Number(codigo);
+      if (num === DIA_EVENTUAL) return "Eventual";
+      return DIAS_FRECUENCIA_CORTOS[num] ?? codigo;
+    })
+    .join(" ");
+}
+
 // ============================================================
 // TEXTOS DE AYUDA POR CAMPO
 // Fuente: Resolución SSPD 20174000237705-15-16, definiciones de los campos
@@ -165,6 +193,20 @@ export const CAMPO_AYUDA = {
 // ENTIDAD (propiedades del GeoJSON feature)
 // ============================================================
 
+// Un barrio por el que efectivamente transcurre la microrruta, ya
+// calculado y guardado por el backend (ver MicrorrutaBarrio en el schema
+// de Prisma y microrrutas-barrios.util.ts) — no se calcula en el
+// frontend. localidadCod/localidadNombre viajan junto a cada barrio
+// porque así los arma directamente la consulta del backend (LEFT JOIN
+// contra localidades), sin necesidad de una búsqueda aparte en el
+// frontend para saber a qué localidad pertenece cada barrio.
+export interface BarrioDeMicrorruta {
+  barrioCod: string;
+  barrioNombre: string;
+  localidadCod: string | null;
+  localidadNombre: string | null;
+}
+
 export interface MicrorrutaProperties {
   id: number;
   nombre: string;
@@ -184,6 +226,11 @@ export interface MicrorrutaProperties {
   // Calculada por el backend (PostGIS ST_Length). Prisma serializa Decimal
   // como string en JSON; se admite también number para defensividad.
   longitudKm?: number | string | null;
+  // Barrio(s) donde la microrruta realmente opera — calculados y
+  // guardados por el backend, no en tiempo real por fila (antes se pedían
+  // uno por uno vía GET /microrrutas/:id/ubicacion; ese endpoint ya no
+  // existe).
+  barrios: BarrioDeMicrorruta[];
 }
 
 // ============================================================
@@ -205,11 +252,17 @@ export interface MicrorrutaProperties {
 //   "frecuencia":4,"dias_frecuencia":"1-3-5",
 //   "estacion_transferencia":2,"tipo_barrido":1,"estado":"BORRADOR",
 //   "geojson":{"type":"LineString","coordinates":[[lon,lat],[lon,lat]]},
-//   "longitud_calculada_km":"0.29"}]
+//   "longitud_calculada_km":"0.29",
+//   "barrios":[{"barrioCod":"...","barrioNombre":"...","localidadCod":"...","localidadNombre":"..."}]}]
 //
-// Nota: las escrituras (POST/PUT) sí usan camelCase, validadas por los DTO
-// de Nest — la asimetría es solo en la respuesta de lectura de este
-// endpoint en particular.
+// Nota: a diferencia del resto de columnas de este item (snake_case), el
+// array `barrios` ya viene en camelCase — lo arma así el propio
+// json_build_object de la consulta SQL en microrrutas.service.ts, no hace
+// falta transformarlo de nuevo en toMicrorrutaFeature().
+//
+// Nota aparte: las escrituras (POST/PUT) sí usan camelCase, validadas por
+// los DTO de Nest — la asimetría del resto de columnas es solo en la
+// respuesta de lectura de este endpoint en particular.
 export interface MicrorrutaApiItem {
   id: number;
   nombre: string;
@@ -228,6 +281,7 @@ export interface MicrorrutaApiItem {
   estado: string;
   geojson: LineStringGeoJson | null;
   longitud_calculada_km: string | number | null;
+  barrios: BarrioDeMicrorruta[];
 }
 
 // Reutilizamos los genéricos de geo.ts para evitar duplicar la estructura

@@ -19,7 +19,6 @@ import OSM from "ol/source/OSM";
 
 import { getBarriosGeoJson, getViasGeoJson, getLocalidadesGeoJson } from "../services/geo";
 import { getRecyclersByTab } from "../services/recyclers";
-import { resolverUbicacionMicrorruta, type UbicacionMicrorruta } from "../services/microrutas";
 import type {
   GeoJsonFeatureCollection,
   BarrioProperties,
@@ -46,11 +45,6 @@ interface CacheReporte {
   // tráfico automatizado y afectar también al mapa en vivo del admin (usa
   // el mismo servicio de tiles).
   localizadores: Map<string, string>;
-  // Barrio/localidad calculados geométricamente por el backend (PostGIS) a
-  // partir de la geometría de cada microrruta — no dependen del reciclador.
-  // Cacheado por id de microrruta para no repetir la consulta al backend
-  // si por alguna razón se pidiera dos veces en el mismo lote.
-  ubicaciones: Map<number, UbicacionMicrorruta>;
   contextosGeograficos: Map<
     string,
     {
@@ -98,7 +92,7 @@ async function obtenerLogoCache(
 }
 
 function crearCacheReporte(): CacheReporte {
-  return { contextosGeograficos: new Map(), localizadores: new Map(), ubicaciones: new Map() };
+  return { contextosGeograficos: new Map(), localizadores: new Map() };
 }
 
 async function obtenerRecyclersCache(cache: CacheReporte): Promise<Recycler[]> {
@@ -129,10 +123,10 @@ async function obtenerLocalidadesGeoJsonCache(
 
 /**
  * Encuentra el reciclador asignado a una microrruta — solo para
- * NOMBRE/CEDULA en la ficha del reporte. El barrio y la localidad ya NO
- * salen de aquí (ver resolverUbicacionGeografica): antes se tomaban del
- * barrio asignado al reciclador, pero eso podía no corresponder con por
- * dónde pasa realmente la ruta.
+ * NOMBRE/CEDULA en la ficha del reporte. El barrio y la localidad no
+ * salen de aquí (ver resolverUbicacionDesdeMicrorruta): no dependen de a
+ * qué reciclador esté asignada la ruta, sino de por dónde pasa realmente
+ * su trazo.
  */
 async function resolverReciclador(
   microrrutaId: number,
@@ -142,34 +136,33 @@ async function resolverReciclador(
   return todos.find((r) => r.microrrutas.some((m) => m.id === microrrutaId)) ?? null;
 }
 
-/**
- * Barrio y localidad de una microrruta, calculados geométricamente por el
- * backend (intersección espacial en PostGIS contra los polígonos de
- * barrios/localidades) — no dependen de a qué reciclador esté asignada la
- * ruta. Cacheado por id de microrruta.
- */
-async function resolverUbicacionGeografica(
-  microrrutaId: number,
-  cache: CacheReporte
-): Promise<UbicacionMicrorruta> {
-  const enCache = cache.ubicaciones.get(microrrutaId);
-  if (enCache) return enCache;
+interface UbicacionDesdeMicrorruta {
+  barrioCod: string | null;
+  barrioNombre: string;
+  localidadCod: string | null;
+  localidadNombre: string | null;
+}
 
-  try {
-    const ubicacion = await resolverUbicacionMicrorruta(microrrutaId);
-    cache.ubicaciones.set(microrrutaId, ubicacion);
-    return ubicacion;
-  } catch (error) {
-    console.error("Error resolviendo la ubicación geográfica de la microrruta:", error);
-    const vacio: UbicacionMicrorruta = {
-      barrioCod: null,
-      barrioNombre: null,
-      localidadCod: null,
-      localidadNombre: null,
-    };
-    cache.ubicaciones.set(microrrutaId, vacio);
-    return vacio;
+/**
+ * Barrio(s) y localidad de una microrruta — ya calculados y guardados por
+ * el backend (MicrorrutaBarrio, ver microrrutas-barrios.util.ts), no se
+ * calculan aquí ni requieren ninguna llamada de red: microrruta.barrios ya
+ * viene resuelto desde GET /microrrutas. Si la ruta tiene más de un
+ * barrio, se muestran todos juntos en la ficha ("El Prado, Boston"); para
+ * el mapa de contexto/localizador (que solo necesita UN barrio/localidad
+ * de referencia para decidir qué capas cargar) se usa el primero de la
+ * lista.
+ */
+function resolverUbicacionDesdeMicrorruta(mr: MicrorrutaProperties): UbicacionDesdeMicrorruta {
+  if (mr.barrios.length === 0) {
+    return { barrioCod: null, barrioNombre: "", localidadCod: null, localidadNombre: null };
   }
+  return {
+    barrioCod: mr.barrios[0].barrioCod,
+    barrioNombre: mr.barrios.map((b) => b.barrioNombre).join(", "),
+    localidadCod: mr.barrios[0].localidadCod,
+    localidadNombre: mr.barrios[0].localidadNombre,
+  };
 }
 
 async function obtenerContextoGeografico(
@@ -690,10 +683,11 @@ async function dibujarPaginaReporte(
   cache: CacheReporte
 ): Promise<void> {
   // El reciclador solo aporta NOMBRE/CEDULA a la ficha; BARRIO/LOCALIDAD ya
-  // no dependen de él — se calculan geométricamente a partir de por dónde
-  // pasa realmente la ruta (ver resolverUbicacionGeografica).
+  // vienen resueltos en microrruta.barrios, calculados y guardados por el
+  // backend — no dependen de a qué reciclador esté asignada la ruta ni
+  // requieren ninguna llamada de red aquí.
   const reciclador = await resolverReciclador(microrruta.id, cache);
-  const ubicacion = await resolverUbicacionGeografica(microrruta.id, cache);
+  const ubicacion = resolverUbicacionDesdeMicrorruta(microrruta);
 
   const { barriosGeoJson, viasGeoJson } = await obtenerContextoGeografico(
     ubicacion.localidadCod,
@@ -743,7 +737,7 @@ async function dibujarPaginaReporte(
       { etiqueta: "CEDULA", valor: reciclador?.cedula ?? "" },
       { etiqueta: "NUMACRO", valor: String(microrruta.id) },
       { etiqueta: "HORARIO", valor: formatearHorario(microrruta) },
-      { etiqueta: "BARRIO", valor: ubicacion.barrioNombre ?? "" },
+      { etiqueta: "BARRIO", valor: ubicacion.barrioNombre },
       { etiqueta: "LOCALIDAD", valor: ubicacion.localidadNombre ?? "" },
       { etiqueta: "INICIO", valor: microrruta.dirInicio ?? "" },
       { etiqueta: "FIN", valor: microrruta.dirFin ?? "" },

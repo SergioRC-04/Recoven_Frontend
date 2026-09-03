@@ -15,6 +15,7 @@ import {
   deleteMicrorruta,
   exportarMicrorrutasExcel,
 } from "../../services/microrutas";
+import { getRecyclersByTab } from "../../services/recyclers";
 import type {
   Localidad,
   Barrio,
@@ -22,6 +23,7 @@ import type {
   BarrioProperties,
   ViaProperties,
 } from "../../types/geo";
+import type { Recycler } from "../../types/recycler";
 import {
   toMicrorrutaFormValues,
   type MicrorrutasGeoJson,
@@ -85,6 +87,14 @@ export default function AdminMicrorrutas() {
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
 
+  // Recicladores — se usan solo para mostrar el trabajador asignado a cada
+  // microrruta en la columna "Trabajador" (misma búsqueda inversa que ya
+  // usa el generador de PDF: recorrer los recicladores y ver a cuáles
+  // microrrutas está asignado cada uno). El barrio de cada microrruta ya
+  // NO se resuelve aquí — llega directo en microrrutasGeo, calculado y
+  // guardado por el backend (ver MicrorrutaBarrio).
+  const [recyclers, setRecyclers] = useState<Recycler[]>([]);
+
   // Contador que se incrementa para forzar una recarga de microrrutas sin
   // necesidad de pasar una función async como dependencia de useEffect.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -105,6 +115,13 @@ export default function AdminMicrorrutas() {
     getLocalidadesList()
       .then(setLocalidades)
       .catch((err) => console.error("Error cargando localidades:", err));
+  }, []);
+
+  // Recicladores (una vez al montar) — alimentan la columna "Trabajador".
+  useEffect(() => {
+    getRecyclersByTab("todos")
+      .then(setRecyclers)
+      .catch((err) => console.error("Error cargando recicladores para la tabla:", err));
   }, []);
 
   // Barrios según la localidad seleccionada: un solo fetch que alimenta
@@ -196,6 +213,18 @@ export default function AdminMicrorrutas() {
   }, [selectedLocalidad, selectedBarrio, refreshKey]);
 
   const microrrutasList = microrrutasGeo?.features?.map((f) => f.properties) ?? [];
+
+  // Nombre del trabajador asignado a cada microrruta, por id — un
+  // reciclador puede tener varias rutas, así que se recorre cada uno una
+  // sola vez y se anota contra todos sus microrrutaId.
+  const trabajadorPorMicrorrutaId = new Map<number, string>();
+  recyclers.forEach((r) => {
+    r.microrrutas.forEach((m) => {
+      if (!trabajadorPorMicrorrutaId.has(m.id)) {
+        trabajadorPorMicrorrutaId.set(m.id, r.nombreCompleto);
+      }
+    });
+  });
 
   const handleDrawEnd = (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
     setDrawing(false);
@@ -444,6 +473,7 @@ export default function AdminMicrorrutas() {
           disabled={isBusy}
           generandoReporteId={generandoReporteId}
           selectedId={microrrutaSeleccionadaId}
+          trabajadorPorMicrorrutaId={trabajadorPorMicrorrutaId}
           onEdit={handleEdit}
           onEditGeometria={(mr) => setEditingGeometriaId(mr.id)}
           onDelete={handleDelete}
