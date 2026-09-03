@@ -17,7 +17,15 @@ import { fromLonLat } from "ol/proj";
 import { Style, Stroke, Fill, Circle as CircleStyle } from "ol/style";
 import { isEmpty } from "ol/extent";
 import { getLength } from "ol/sphere";
-import { FaDrawPolygon, FaSave, FaTimes, FaSpinner } from "react-icons/fa";
+import {
+  FaDrawPolygon,
+  FaSave,
+  FaTimes,
+  FaSpinner,
+  FaUndo,
+  FaArrowRight,
+  FaTrash,
+} from "react-icons/fa";
 import { updateMicrorrutaGeometria } from "../../services/microrutas";
 import type { MicrorrutasGeoJson, LineStringGeoJson } from "../../types/microrruta";
 import type { GeoJsonFeatureCollection, BarrioProperties, ViaProperties } from "../../types/geo";
@@ -168,6 +176,14 @@ export default function MicrorrutaMapEditor({
   // Trazo nuevo dibujado para reemplazar la geometría de la microrruta en
   // edición. null mientras no se ha terminado de dibujar todavía.
   const [editSketchGeojson, setEditSketchGeojson] = useState<LineStringGeoJson | null>(null);
+  // true tras darle a "Borrar trazo anterior": oculta la línea original
+  // (la punteada en ámbar) de la vista, para dibujar sobre un lienzo
+  // limpio. Se reinicia a false cada vez que una sesión de edición
+  // termina — ver handleCancelEdit y handleSaveGeometria, más abajo — no
+  // reactivamente con un efecto: como toda edición nueva empieza después
+  // de que la anterior ya terminó por uno de esos dos caminos, el
+  // resultado es el mismo sin necesidad de un efecto extra.
+  const [ocultarTrazoOriginal, setOcultarTrazoOriginal] = useState(false);
 
   // Inicializar mapa (una vez). zIndex explícito en cada capa (en vez de
   // depender solo del orden dentro de `layers`) para poder reordenarlas
@@ -257,12 +273,14 @@ export default function MicrorrutaMapEditor({
   }, [drawing, editingGeometriaId]);
 
   // Estilo de la capa de microrrutas: en edición se ve en ámbar
-  // (MICRORRUTA_EDITING_STYLE); mientras se traza/edita cualquier ruta, el
-  // resto se atenúa (MICRORRUTA_SOFT_STYLE) para no competir visualmente
-  // con el trazo en curso; en cualquier otro momento, color normal. La
-  // selección por clic (rojo) la sigue aplicando la propia interacción
-  // Select más abajo — no se solapa con esto porque Select se desactiva
-  // por completo mientras se dibuja/edita (ver ese efecto).
+  // (MICRORRUTA_EDITING_STYLE), salvo que se haya pedido ocultarla
+  // ("Borrar trazo anterior" — no se dibuja nada para esa feature); mientras
+  // se traza/edita cualquier ruta, el resto se atenúa (MICRORRUTA_SOFT_STYLE)
+  // para no competir visualmente con el trazo en curso; en cualquier otro
+  // momento, color normal. La selección por clic (rojo) la sigue aplicando
+  // la propia interacción Select más abajo — no se solapa con esto porque
+  // Select se desactiva por completo mientras se dibuja/edita (ver ese
+  // efecto).
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
     if (!microrrutasLayer) return;
@@ -270,11 +288,13 @@ export default function MicrorrutaMapEditor({
     const atenuar = drawing || editingGeometriaId !== null;
 
     microrrutasLayer.setStyle((feature) => {
-      if (feature.get("id") === editingGeometriaId) return MICRORRUTA_EDITING_STYLE;
+      if (feature.get("id") === editingGeometriaId) {
+        return ocultarTrazoOriginal ? undefined : MICRORRUTA_EDITING_STYLE;
+      }
       if (atenuar) return MICRORRUTA_SOFT_STYLE;
       return MICRORRUTA_STYLE;
     });
-  }, [drawing, editingGeometriaId]);
+  }, [drawing, editingGeometriaId, ocultarTrazoOriginal]);
 
   // Refrescar la fuente de barrios cuando llega nueva data del padre.
   useEffect(() => {
@@ -634,7 +654,43 @@ export default function MicrorrutaMapEditor({
   const handleCancelEdit = () => {
     setEditSketchGeojson(null);
     setGeometriaError(null);
+    setOcultarTrazoOriginal(false);
     onCancelGeometriaEdit();
+  };
+
+  // Deshace el último punto colocado, sin tener que cancelar y empezar de
+  // cero — funciona tanto al trazar una ruta nueva como al redibujar una
+  // existente, según cuál de las dos interacciones esté activa en ese
+  // momento. removeLastPoint() es un método propio de Draw en OpenLayers,
+  // pensado exactamente para esto.
+  const handleDeshacerUltimoPunto = () => {
+    if (drawing) {
+      drawInteractionRef.current?.removeLastPoint();
+    } else if (editingGeometriaId !== null) {
+      editDrawInteractionRef.current?.removeLastPoint();
+    }
+  };
+
+  // Solo tiene sentido en modo edición: en vez de trazar el reemplazo
+  // desde cero, retoma el trazo ORIGINAL (el mismo que se ve punteado en
+  // ámbar) para seguir agregándole puntos al final. Usa Draw.extend(), un
+  // método de OpenLayers hecho exactamente para esto — "inicia el modo de
+  // dibujo a partir de una geometría existente, que recibe los puntos
+  // nuevos." Solo tiene efecto si todavía no se ha completado un trazo de
+  // reemplazo en esta sesión de edición (antes de que exista
+  // editSketchGeojson) — una vez completado, Draw ya se retiró del mapa.
+  const handleContinuarDesdeExistente = () => {
+    const microrrutasLayer = microrrutasLayerRef.current;
+    const draw = editDrawInteractionRef.current;
+    if (!microrrutasLayer || !draw || editingGeometriaId === null) return;
+
+    const feature = microrrutasLayer
+      .getSource()
+      ?.getFeatures()
+      .find((f) => f.get("id") === editingGeometriaId);
+    if (!feature) return;
+
+    draw.extend(feature);
   };
 
   const handleSaveGeometria = useCallback(async () => {
@@ -645,6 +701,7 @@ export default function MicrorrutaMapEditor({
     try {
       await updateMicrorrutaGeometria(editingGeometriaId, { geojson: editSketchGeojson });
       setEditSketchGeojson(null);
+      setOcultarTrazoOriginal(false);
       onGeometriaSaved();
     } catch (error) {
       setGeometriaError(
@@ -710,19 +767,50 @@ export default function MicrorrutaMapEditor({
       />
 
       {drawing && (
-        <div className="absolute top-3 left-3 z-10 rounded-xl bg-white/95 px-3 py-2 text-xs font-bold text-gray-700 shadow-md">
-          <FaDrawPolygon className="mr-1.5 inline text-emerald-600" />
-          Clic para trazar puntos — doble clic para terminar
+        <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-2">
+          <div className="rounded-xl bg-white/95 px-3 py-2 text-xs font-bold text-gray-700 shadow-md">
+            <FaDrawPolygon className="mr-1.5 inline text-emerald-600" />
+            Clic para trazar puntos — doble clic para terminar
+          </div>
+          <button
+            onClick={handleDeshacerUltimoPunto}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-bold text-gray-700 shadow-md transition hover:bg-gray-100"
+          >
+            <FaUndo /> Deshacer último punto
+          </button>
         </div>
       )}
 
       {editingGeometriaId !== null && (
         <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
           {!editSketchGeojson && (
-            <div className="rounded-xl bg-white/95 px-3 py-2 text-xs font-bold text-gray-700 shadow-md">
-              <FaDrawPolygon className="mr-1.5 inline text-amber-600" />
-              Dibuja el nuevo trazo — doble clic para terminar
-            </div>
+            <>
+              <div className="rounded-xl bg-white/95 px-3 py-2 text-xs font-bold text-gray-700 shadow-md">
+                <FaDrawPolygon className="mr-1.5 inline text-amber-600" />
+                Dibuja el nuevo trazo — doble clic para terminar
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={handleContinuarDesdeExistente}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-bold text-gray-700 shadow-md transition hover:bg-gray-100"
+                >
+                  <FaArrowRight /> Continuar desde el trazo existente
+                </button>
+                <button
+                  onClick={() => setOcultarTrazoOriginal(true)}
+                  disabled={ocultarTrazoOriginal}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-bold text-red-700 shadow-md transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FaTrash /> Borrar trazo anterior
+                </button>
+                <button
+                  onClick={handleDeshacerUltimoPunto}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-bold text-gray-700 shadow-md transition hover:bg-gray-100"
+                >
+                  <FaUndo /> Deshacer último punto
+                </button>
+              </div>
+            </>
           )}
           <div className="flex gap-2 rounded-xl bg-white/95 p-2 shadow-md">
             <button
