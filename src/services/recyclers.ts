@@ -13,18 +13,43 @@ import type {
 // por lo que TODOS los métodos requieren autenticación (requiresAuth: true).
 
 /**
- * Lista recicladores filtrando por pestaña y/o búsqueda de nombre/cédula.
- * Cuando tab === "todos" no se envía el parámetro tab, y el backend
- * devuelve todos los activos (estadoVinculacion = ACTIVO, deletedAt = null).
+ * Lista recicladores filtrando por pestaña, censo y/o búsqueda de
+ * nombre/cédula. Cuando tab === "todos" no se envía el parámetro tab, y
+ * el backend devuelve todos los activos (estadoVinculacion = ACTIVO,
+ * deletedAt = null).
  *
  * Controller: GET /recyclers  (JwtAuthGuard — nivel de clase)
  */
-export async function getRecyclersByTab(tab: RecyclerTab, search?: string): Promise<Recycler[]> {
+export async function getRecyclersByTab(
+  tab: RecyclerTab,
+  search?: string,
+  censado?: boolean
+): Promise<Recycler[]> {
   const params = new URLSearchParams();
   if (tab !== "todos") params.append("tab", tab);
   if (search) params.append("search", search);
+  if (censado !== undefined) params.append("censado", String(censado));
   const query = params.toString();
   return recovenApi.get(`/recyclers${query ? `?${query}` : ""}`, true);
+}
+
+export interface RecyclerKpis {
+  total: number;
+  censados: number;
+  sinCensar: number;
+  desvinculados: number;
+}
+
+/**
+ * Conteos para las tarjetas KPI del panel — un endpoint dedicado, en vez
+ * de traer la lista completa de recicladores dos veces (como se hacía
+ * antes) solo para contarlos. Mucho más liviano: no trae barrios ni
+ * microrrutas anidados, solo números.
+ *
+ * Controller: GET /recyclers/kpis  (JwtAuthGuard)
+ */
+export async function obtenerKpisRecyclers(): Promise<RecyclerKpis> {
+  return recovenApi.get("/recyclers/kpis", true);
 }
 
 /**
@@ -98,4 +123,26 @@ export async function exportarRecyclers(tipo: TipoExportRecyclers): Promise<Blob
  */
 export async function exportarCertificado(id: number): Promise<Blob> {
   return recovenApi.getBlob(`/recyclers/${id}/certificado`, true);
+}
+
+export interface EstadoCertificadosGeneral {
+  actualizando: boolean;
+  url: string | null;
+}
+
+/**
+ * Estado actual del reporte combinado de certificados — de solo lectura,
+ * no dispara ninguna regeneración. Se usa de dos formas: una vez al
+ * cargar la página de recicladores, y en sondeo (polling) después de
+ * crear/editar un reciclador, hasta que actualizando pase a false — eso
+ * es "escuchar" cuándo terminó la regeneración en segundo plano que se
+ * disparó del lado del backend, sin que esta consulta la dispare ella
+ * misma. El botón "Exportar Certificados" solo usa la URL que ya está
+ * guardada en el estado del componente (de la última consulta), sin
+ * volver a llamar a esto en el momento del clic.
+ *
+ * Controller: GET /recyclers/certificados-estado  (JwtAuthGuard)
+ */
+export async function obtenerEstadoCertificadosGeneral(): Promise<EstadoCertificadosGeneral> {
+  return recovenApi.get("/recyclers/certificados-estado", true);
 }

@@ -24,6 +24,21 @@ export const CLASIFICACION_COLORS: Record<Clasificacion, string> = {
 // INACTIVO = desvinculado (soft-delete del backend: deletedAt + estadoVinculacion)
 export type EstadoVinculacion = "ACTIVO" | "INACTIVO";
 
+// Tipo de documento de identidad — antes se asumía siempre cédula
+// colombiana; ahora cubre también extranjeros (venezolanos en particular,
+// el caso más frecuente hoy) y otros casos. Confirmado con el enum
+// TipoDocumento del schema de Prisma.
+export type TipoDocumento =
+  "CEDULA_CIUDADANIA" | "CEDULA_EXTRANJERIA" | "CEDULA_VENEZOLANA" | "PASAPORTE" | "OTRO";
+
+export const TIPO_DOCUMENTO_LABELS: Record<TipoDocumento, string> = {
+  CEDULA_CIUDADANIA: "Cédula de ciudadanía",
+  CEDULA_EXTRANJERIA: "Cédula extranjera",
+  CEDULA_VENEZOLANA: "Cédula venezolana",
+  PASAPORTE: "Pasaporte",
+  OTRO: "Otro",
+};
+
 export type RecyclerTab =
   "todos" | "con_ruta" | "sin_ruta" | "nuevos" | "a_quitar" | "desvinculados";
 
@@ -79,10 +94,16 @@ export interface MicrorrutaResumen {
 
 export interface Recycler {
   id: number;
+  tipoDocumento: TipoDocumento;
   cedula: string;
   nombreCompleto: string;
   censado: boolean;
   clasificacion: Clasificacion;
+  // Aclaración libre sobre la ubicación, además de los barrios asignados
+  // — p. ej. "Solo el Conjunto Villa Alegre" o "Sector Juan Mina, no
+  // pertenece a ningún barrio formal". Un solo campo general por
+  // reciclador, no uno por cada barrio. null cuando no se ha escrito nada.
+  detalleUbicacion: string | null;
   estadoVinculacion: EstadoVinculacion;
   barrios: BarrioResumen[];
   microrrutas: MicrorrutaResumen[];
@@ -109,10 +130,12 @@ export interface RecyclersFilters {
 // ============================================================
 
 export interface RecyclerFormValues {
+  tipoDocumento: TipoDocumento;
   cedula: string;
   nombreCompleto: string;
   censado: boolean;
   clasificacion: Clasificacion;
+  detalleUbicacion: string;
   // Fecha de ingreso — se envía como "YYYY-MM-DD". El backend convierte a Date.
   fechaIngreso: string;
   // Se envían al backend como arrays de IDs
@@ -134,10 +157,12 @@ const FECHA_INGRESO_DEFAULT = new Date().toISOString().split("T")[0];
 
 export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
   return {
+    tipoDocumento: recycler.tipoDocumento,
     cedula: recycler.cedula,
     nombreCompleto: recycler.nombreCompleto,
     censado: recycler.censado,
     clasificacion: recycler.clasificacion,
+    detalleUbicacion: recycler.detalleUbicacion ?? "",
     fechaIngreso: recycler.fechaIngreso
       ? recycler.fechaIngreso.split("T")[0]
       : FECHA_INGRESO_DEFAULT,

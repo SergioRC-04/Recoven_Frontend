@@ -8,10 +8,12 @@ import { getBarriosList } from "../../services/geo";
 import type { Barrio } from "../../types/geo";
 import {
   CLASIFICACION_LABELS,
+  TIPO_DOCUMENTO_LABELS,
   toRecyclerFormValues,
   type Clasificacion,
   type Recycler,
   type RecyclerFormValues,
+  type TipoDocumento,
 } from "../../types/recycler";
 
 type RecyclerFormModalProps =
@@ -21,10 +23,12 @@ type RecyclerFormModalProps =
 const FECHA_INGRESO_DEFAULT = new Date().toISOString().split("T")[0];
 
 const EMPTY_VALUES: RecyclerFormValues = {
+  tipoDocumento: "CEDULA_CIUDADANIA",
   cedula: "",
   nombreCompleto: "",
   censado: false,
   clasificacion: "NUEVO",
+  detalleUbicacion: "",
   fechaIngreso: FECHA_INGRESO_DEFAULT,
   barriosIds: [],
   microrrutasIds: [],
@@ -147,7 +151,21 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-bold text-gray-700">Cédula</label>
+              <label className="block text-sm font-bold text-gray-700">Tipo de documento</label>
+              <select
+                value={values.tipoDocumento}
+                onChange={(e) => update("tipoDocumento", e.target.value as TipoDocumento)}
+                className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              >
+                {Object.entries(TIPO_DOCUMENTO_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700">Número de documento</label>
               <input
                 type="text"
                 required
@@ -156,7 +174,8 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
                 className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
-            <div>
+
+            <div className="sm:col-span-2">
               <label className="block text-sm font-bold text-gray-700">Nombre completo</label>
               <input
                 type="text"
@@ -255,6 +274,25 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700">
+              Detalle adicional de ubicación
+            </label>
+            <input
+              type="text"
+              maxLength={255}
+              value={values.detalleUbicacion}
+              onChange={(e) => update("detalleUbicacion", e.target.value)}
+              placeholder='Ej: "Solo el Conjunto Villa Alegre" o "Sector Juan Mina, no pertenece a ningún barrio formal"'
+              className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Opcional — solo para aclarar algo que los barrios asignados arriba no alcanzan a
+              precisar (un conjunto o edificio específico, un sector fuera de los barrios formales,
+              etc.).
+            </p>
+          </div>
 
           {error && <div className="text-sm text-red-600">{error}</div>}
 
