@@ -58,15 +58,18 @@ export default function MicrorrutasTable({
   onGenerarReporte,
   onSelectRow,
 }: MicrorrutasTableProps) {
-  // La seleccionada se muestra primero; el resto conserva su orden
-  // original. Sin selección, es exactamente el array que llegó — no se
-  // reordena hasta que haya algo que traer al frente.
+  // Orden alfabético por nombre (case‑sensitive pero con localeCompare)
+  const sortedMicrorrutas = [...microrrutas].sort((a, b) =>
+    a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+  );
+
+  // Si hay una seleccionada, la ponemos al frente; el resto ya está ordenado
   const microrrutasOrdenadas = selectedId
     ? [
-        ...microrrutas.filter((mr) => mr.id === selectedId),
-        ...microrrutas.filter((mr) => mr.id !== selectedId),
+        ...sortedMicrorrutas.filter((mr) => mr.id === selectedId),
+        ...sortedMicrorrutas.filter((mr) => mr.id !== selectedId),
       ]
-    : microrrutas;
+    : sortedMicrorrutas;
 
   const renderTrabajador = (mr: MicrorrutaProperties) => {
     const nombre = trabajadorPorMicrorrutaId.get(mr.id);

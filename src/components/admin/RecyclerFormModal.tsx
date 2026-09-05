@@ -55,8 +55,11 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
         const barriosOrdenados = [...barriosData].sort((a, b) =>
           a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
         );
+        const microrrutasOrdenadas = [...microrrutasData].sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es")
+        );
         setBarrios(barriosOrdenados);
-        setMicrorrutas(microrrutasData);
+        setMicrorrutas(microrrutasOrdenadas);
       } catch (err) {
         console.error("Error cargando opciones del formulario:", err);
       } finally {
