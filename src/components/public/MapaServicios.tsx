@@ -579,7 +579,10 @@ export default function MapaServicios() {
           }).readFeatures(microrrutasGeo),
         });
         microrrutasLayer.setSource(source);
-        setMicrorrutasList(microrrutasGeo.features.map((f) => f.properties));
+
+        const properties = microrrutasGeo.features.map((f) => f.properties);
+        properties.sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+        setMicrorrutasList(properties);
       } catch (error) {
         console.error("Error cargando microrrutas GeoJSON:", error);
       } finally {
