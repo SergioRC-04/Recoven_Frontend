@@ -38,7 +38,7 @@ const CENTER_BARRANQUILLA = fromLonLat([-74.7964, 10.9878]);
 // visual, sin interacción. Verde, tono suave y sin relleno: es solo un
 // límite de referencia, no el que está seleccionado en el filtro.
 const BARRIOS_REF_STYLE = new Style({
-  stroke: new Stroke({ color: "rgba(16, 185, 129, 0.6)", width: 1.5 }),
+  stroke: new Stroke({ color: "rgba(16, 185, 129, 1)", width: 1.5 }),
 });
 
 // Barrio actualmente seleccionado en el filtro (no la localidad completa):
