@@ -1,5 +1,5 @@
 // components/admin/AdminMicrorrutas.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   FaDrawPolygon,
   FaTimes,
@@ -49,38 +49,22 @@ export default function AdminMicrorrutas() {
   const [selectedLocalidad, setSelectedLocalidad] = useState("");
   const [selectedBarrio, setSelectedBarrio] = useState("");
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
-  const [barrios, setBarrios] = useState<Barrio[]>([]);
-  // GeoJSON completo de los barrios de la localidad filtrada. Se pide una
-  // sola vez aquí y se comparte con el mapa (como prop) en vez de que el
-  // mapa haga su propia petición por separado — antes eran dos fetches
-  // independientes compitiendo, y a veces el mapa no alcanzaba a tener los
-  // datos listos cuando el usuario ya había elegido un barrio, por lo que
-  // el encuadre no ocurría.
-  const [barriosGeo, setBarriosGeo] = useState<GeoJsonFeatureCollection<BarrioProperties> | null>(
-    null
-  );
 
-  // GeoJSON de vías — capa de referencia y fuente del snap al dibujar.
-  // Filtradas por localidad/barrio cuando hay un filtro activo; si no hay
-  // ninguno pero se está dibujando o editando, se cargan todas las vías de
-  // la ciudad como respaldo (ver el efecto correspondiente más abajo).
+  // GeoJSON de todos los barrios (carga única al montar)
+  const [todosLosBarriosGeo, setTodosLosBarriosGeo] =
+    useState<GeoJsonFeatureCollection<BarrioProperties> | null>(null);
+
+  // GeoJSON de vías (carga única)
   const [viasGeo, setViasGeo] = useState<GeoJsonFeatureCollection<ViaProperties> | null>(null);
 
   const [microrrutasGeo, setMicrorrutasGeo] = useState<MicrorrutasGeoJson | null>(null);
 
-  // loading se deriva del estado de los datos: si aún no hay respuesta (null),
-  // estamos cargando. Esto evita tener que llamar setState en el cuerpo del
-  // efecto, lo que violaría react-hooks/set-state-in-effect.
   const loading = microrrutasGeo === null;
 
   const [drawing, setDrawing] = useState(false);
   const [editingGeometriaId, setEditingGeometriaId] = useState<number | null>(null);
-  // Microrruta resaltada al hacer clic en ella en el mapa — se refleja en
-  // la fila correspondiente de la tabla de abajo.
   const [microrrutaSeleccionadaId, setMicrorrutaSeleccionadaId] = useState<number | null>(null);
-  // id de la microrruta cuyo PDF se está generando (muestra spinner en su fila).
   const [generandoReporteId, setGenerandoReporteId] = useState<number | null>(null);
-  // Progreso del PDF combinado ("Generar Informe SUI Microrrutas"). null = no está corriendo.
   const [generandoTodo, setGenerandoTodo] = useState<{ actual: number; total: number } | null>(
     null
   );
@@ -88,54 +72,42 @@ export default function AdminMicrorrutas() {
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
 
-  // Recicladores — se usan solo para mostrar el trabajador asignado a cada
-  // microrruta en la columna "Trabajador" (misma búsqueda inversa que ya
-  // usa el generador de PDF: recorrer los recicladores y ver a cuáles
-  // microrrutas está asignado cada uno). El barrio de cada microrruta ya
-  // NO se resuelve aquí — llega directo en microrrutasGeo, calculado y
-  // guardado por el backend (ver MicrorrutaBarrio).
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
-
-  // Lista COMPLETA de microrrutas, sin ningún filtro — independiente de
-  // microrrutasGeo (que sí respeta el filtro activo). Se usa únicamente
-  // para calcular cuántas rutas tiene cada localidad/barrio y mostrarlo
-  // junto a cada opción de los selects de filtro (ver calcularConteosMicrorrutas).
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
 
-  // Contador que se incrementa para forzar una recarga de microrrutas sin
-  // necesidad de pasar una función async como dependencia de useEffect.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
 
-  // Guarda contra respuestas obsoletas: recovenApi.get no acepta un
-  // AbortSignal, así que un AbortController no cancela la petición real —
-  // solo marca un signal que nadie lee. En su lugar, cada fetch se numera;
-  // si la respuesta llega después de que los filtros ya cambiaron, se descarta.
   const requestIdRef = useRef(0);
 
-  // Mientras se dibuja una ruta nueva o se edita un trazo existente, no permitimos
-  // cambiar los filtros (evita que el mapa recargue su capa a mitad de una edición).
   const isBusy = drawing || editingGeometriaId !== null;
 
-  // Localidades (una vez al montar)
+  // ─── Carga de datos iniciales ────────────────────────────────────────────────
+
   useEffect(() => {
     getLocalidadesList()
       .then(setLocalidades)
       .catch((err) => console.error("Error cargando localidades:", err));
   }, []);
 
-  // Recicladores (una vez al montar) — alimentan la columna "Trabajador".
   useEffect(() => {
     getRecyclersByTab("todos")
       .then(setRecyclers)
-      .catch((err) => console.error("Error cargando recicladores para la tabla:", err));
+      .catch((err) => console.error("Error cargando recicladores:", err));
   }, []);
 
-  // Todas las microrrutas, sin filtro — solo para los conteos de los
-  // selects de Localidad/Barrio. Depende de refreshKey (no de los
-  // filtros activos) para que los conteos se actualicen al crear, editar
-  // o eliminar una ruta, sin importar qué filtro esté aplicado en ese
-  // momento en la tabla/mapa.
+  useEffect(() => {
+    getBarriosGeoJson()
+      .then(setTodosLosBarriosGeo)
+      .catch((err) => console.error("Error cargando todos los barrios:", err));
+  }, []);
+
+  useEffect(() => {
+    getViasGeoJson()
+      .then(setViasGeo)
+      .catch((err) => console.error("Error cargando vías:", err));
+  }, []);
+
   useEffect(() => {
     getMicrorrutas()
       .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
@@ -144,70 +116,53 @@ export default function AdminMicrorrutas() {
       );
   }, [refreshKey]);
 
-  // Barrios según la localidad seleccionada: un solo fetch que alimenta
-  // tanto el selector (lista liviana) como el mapa (GeoJSON completo).
-  // El reseteo cuando no hay localidad ocurre en el evento que lo origina
-  // (handleLocalidadChange / "Limpiar filtros"), no aquí — este efecto solo
-  // hace la petición real cuando hay una localidad que consultar.
-  useEffect(() => {
-    if (!selectedLocalidad) return;
+  // ─── Cálculo derivado de barrios y barriosGeo (sin setState en efectos) ────
 
-    getBarriosGeoJson({ localidadCod: selectedLocalidad })
-      .then((geo) => {
-        setBarriosGeo(geo);
-        const lista: Barrio[] = geo.features
-          .map((f) => ({
-            id: f.properties.id,
-            identificador: f.properties.identificador,
-            nombre_barrio: f.properties.nombre,
-            localidadCod: f.properties.localidadCod,
-          }))
-          // Son demasiados barrios para dejarlos en el orden que llegue del
-          // backend — se ordenan alfabéticamente para el selector. No
-          // depende de que el backend también los ordene (aunque lo haga):
-          // es una garantía explícita en el punto donde se muestran.
-          .sort((a, b) => a.nombre_barrio.localeCompare(b.nombre_barrio, "es"));
-        setBarrios(lista);
-        // Si el barrio seleccionado ya no pertenece a la nueva localidad, lo limpiamos.
-        setSelectedBarrio((prev) =>
-          prev && !lista.some((b) => b.identificador === prev) ? "" : prev
-        );
-      })
-      .catch((err) => console.error("Error cargando barrios:", err));
-  }, [selectedLocalidad]);
+  const barrios = useMemo<Barrio[]>(() => {
+    if (!todosLosBarriosGeo) return [];
 
-  // Vías: se cargan UNA SOLA VEZ al montar, sin ningún filtro, y se quedan
-  // así para toda la sesión. Antes se volvían a pedir cada vez que
-  // cambiaba el filtro o se empezaba a dibujar sin filtro activo — que es
-  // el caso más común — lo que causaba dos problemas: la demora se sentía
-  // en cada "Trazar Nueva Ruta" (petición nueva de la ciudad completa cada
-  // vez), y si el usuario dibujaba antes de que esa petición terminara, el
-  // snap quedaba vacío hasta que llegara. Cargando todo una vez desde el
-  // principio, para cuando el usuario le da a "Trazar" o aplica un filtro,
-  // las vías ya están listas — no hay nada que esperar.
-  useEffect(() => {
-    getViasGeoJson()
-      .then(setViasGeo)
-      .catch((err) => console.error("Error cargando vías:", err));
-  }, []);
+    let features = todosLosBarriosGeo.features;
 
-  // Cambia la localidad y limpia de inmediato los datos que dependían de la
-  // anterior (barrios, barrio elegido). Vías NO se limpia aquí: no depende
-  // del filtro de localidad, se carga una sola vez al montar. Se hace esto
-  // en el evento que lo origina, en vez de reactivamente en el efecto de
-  // arriba — llamar setState síncronamente dentro de un efecto sin trabajo
-  // asíncrono real detrás genera renders en cascada innecesarios.
-  const handleLocalidadChange = (value: string) => {
-    setSelectedLocalidad(value);
-    setBarriosGeo(null);
-    setBarrios([]);
-    setSelectedBarrio("");
-  };
+    if (selectedLocalidad) {
+      features = features.filter((f) => f.properties.localidadCod === selectedLocalidad);
+    }
 
-  // Microrrutas — se recarga cuando cambian los filtros o cuando refresh() es llamado.
-  // Ponemos microrrutasGeo a null al inicio de cada fetch (en el cleanup del efecto
-  // anterior) para que `loading` vuelva a ser true inmediatamente, sin llamar
-  // setState en el cuerpo del efecto.
+    const lista: Barrio[] = features.map((f) => ({
+      id: f.properties.id,
+      identificador: f.properties.identificador,
+      nombre_barrio: f.properties.nombre,
+      localidadCod: f.properties.localidadCod,
+    }));
+
+    lista.sort((a, b) => a.nombre_barrio.localeCompare(b.nombre_barrio, "es"));
+    return lista;
+  }, [todosLosBarriosGeo, selectedLocalidad]);
+
+  const barriosGeo = useMemo<GeoJsonFeatureCollection<BarrioProperties> | null>(() => {
+    if (!todosLosBarriosGeo) return null;
+
+    let features = todosLosBarriosGeo.features;
+
+    if (selectedLocalidad) {
+      features = features.filter((f) => f.properties.localidadCod === selectedLocalidad);
+    }
+
+    if (selectedBarrio) {
+      features = features.filter((f) => f.properties.identificador === selectedBarrio);
+    }
+
+    if (!selectedLocalidad && !selectedBarrio) {
+      return null;
+    }
+
+    return {
+      type: "FeatureCollection",
+      features,
+    };
+  }, [todosLosBarriosGeo, selectedLocalidad, selectedBarrio]);
+
+  // ─── Carga de microrrutas según filtros ─────────────────────────────────────
+
   useEffect(() => {
     const requestId = ++requestIdRef.current;
 
@@ -216,27 +171,24 @@ export default function AdminMicrorrutas() {
       barrioCod: selectedBarrio || undefined,
     })
       .then((data) => {
-        if (requestIdRef.current !== requestId) return; // respuesta obsoleta, se ignora
+        if (requestIdRef.current !== requestId) return;
         setMicrorrutasGeo(data);
       })
       .catch((err) => {
         if (requestIdRef.current !== requestId) return;
         console.error("Error cargando microrrutas:", err);
-        // En error mostramos colección vacía para no quedarnos en loading indefinido.
         setMicrorrutasGeo({ type: "FeatureCollection", features: [] });
       });
 
     return () => {
-      // Resetear a null para que loading === true durante el siguiente fetch.
       setMicrorrutasGeo(null);
     };
   }, [selectedLocalidad, selectedBarrio, refreshKey]);
 
+  // ─── Derivados ──────────────────────────────────────────────────────────────
+
   const microrrutasList = microrrutasGeo?.features?.map((f) => f.properties) ?? [];
 
-  // Conteos para los selects de Localidad/Barrio, calculados sobre
-  // todasLasMicrorrutas (sin filtro) — no sobre microrrutasList, que
-  // cambia según el filtro activo y daría un conteo incorrecto.
   const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
   const localidadesOrdenadas = ordenarPorConteo(
     localidades,
@@ -251,9 +203,6 @@ export default function AdminMicrorrutas() {
     (b) => b.nombre_barrio
   );
 
-  // Nombre del trabajador asignado a cada microrruta, por id — un
-  // reciclador puede tener varias rutas, así que se recorre cada uno una
-  // sola vez y se anota contra todos sus microrrutaId.
   const trabajadorPorMicrorrutaId = new Map<number, string>();
   recyclers.forEach((r) => {
     r.microrrutas.forEach((m) => {
@@ -262,6 +211,13 @@ export default function AdminMicrorrutas() {
       }
     });
   });
+
+  // ─── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleLocalidadChange = (value: string) => {
+    setSelectedLocalidad(value);
+    setSelectedBarrio(""); // limpiar barrio al cambiar localidad
+  };
 
   const handleDrawEnd = (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
     setDrawing(false);
@@ -287,9 +243,6 @@ export default function AdminMicrorrutas() {
   };
 
   const handleGenerarReporte = async (mr: MicrorrutaProperties) => {
-    // La geometría vive en el feature GeoJSON, no en MicrorrutaProperties
-    // (que solo trae los atributos) — se busca en los datos ya cargados en
-    // vez de pedirla de nuevo al backend.
     const feature = microrrutasGeo?.features.find((f) => f.properties.id === mr.id);
     if (!feature) {
       alert("No se encontró la geometría de la microrruta. Recarga la página e intenta de nuevo.");
@@ -297,9 +250,6 @@ export default function AdminMicrorrutas() {
     }
     setGenerandoReporteId(mr.id);
     try {
-      // La geometría de una microrruta siempre es LineString (confirmado en
-      // el schema de Prisma: geom Unsupported("geometry(LineString, 9377)")),
-      // pero el tipo del feature es el genérico GeoJsonGeometry — de ahí el cast.
       await generarReporteMicrorruta(mr, feature.geometry as LineStringGeoJson);
     } catch (error) {
       console.error("Error generando el reporte PDF:", error);
@@ -315,9 +265,6 @@ export default function AdminMicrorrutas() {
       alert("No hay microrrutas para exportar con el filtro actual.");
       return;
     }
-    // Respeta el filtro de localidad/barrio activo en la tabla — "todo" es
-    // "todo lo que se está viendo ahora mismo", no necesariamente todas las
-    // microrrutas del sistema.
     const rutas = features.map((f) => ({
       microrruta: f.properties,
       geometry: f.geometry as LineStringGeoJson,
@@ -339,7 +286,6 @@ export default function AdminMicrorrutas() {
   const handleDescargarExcel = async () => {
     setDescargandoExcel(true);
     try {
-      // Mismo filtro activo que la tabla y que "Generar Informe SUI Microrrutas" (PDF).
       const blob = await exportarMicrorrutasExcel({
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
@@ -360,8 +306,11 @@ export default function AdminMicrorrutas() {
     }
   };
 
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
+      {/* Encabezado */}
       <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-black text-gray-900">Microrrutas</h1>
@@ -379,7 +328,6 @@ export default function AdminMicrorrutas() {
             type="button"
             onClick={handleDescargarExcel}
             disabled={isBusy || descargandoExcel}
-            title="Descargar el reporte de microrrutas en formato SUI (.xlsx)"
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
@@ -389,7 +337,6 @@ export default function AdminMicrorrutas() {
             type="button"
             onClick={handleGenerarReporteTodas}
             disabled={isBusy || generandoTodo !== null}
-            title="Descargar un solo PDF con una hoja por cada microrruta mostrada"
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
@@ -398,6 +345,7 @@ export default function AdminMicrorrutas() {
         </div>
       </div>
 
+      {/* Filtros */}
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div>
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
@@ -440,9 +388,11 @@ export default function AdminMicrorrutas() {
 
         <button
           type="button"
-          onClick={() => handleLocalidadChange("")}
+          onClick={() => {
+            setSelectedLocalidad("");
+            setSelectedBarrio("");
+          }}
           disabled={isBusy || (!selectedLocalidad && !selectedBarrio)}
-          title="Limpiar filtros"
           className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FaEraser /> Limpiar filtros
@@ -453,7 +403,6 @@ export default function AdminMicrorrutas() {
             type="button"
             onClick={() => setMostrarExportarCapas(true)}
             disabled={isBusy}
-            title="Exportar capas en GeoJSON o Shapefile para QGIS/ArcGIS"
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FaLayerGroup /> Exportar capas

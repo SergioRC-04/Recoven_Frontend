@@ -51,29 +51,64 @@ const BARRIO_SELECTED_STYLE = new Style({
   fill: new Fill({ color: "rgba(16, 185, 129, 0.15)" }),
 });
 
-const MICRORRUTA_STYLE = new Style({
-  stroke: new Stroke({ color: "#2563eb", width: 3 }),
-});
+// Resoluciones de referencia — mismas que usa el mapa público
+// (MapaServicios.tsx) para su grosor dinámico, así el criterio de "qué
+// tan cerca hay que estar para verse a tamaño completo" es consistente en
+// toda la app. 156543.03392804097 = resolución (m/px) en zoom 0 para
+// EPSG:3857 con tiles de 256px.
+const RESOLUCION_ZOOM_12 = 156543.03392804097 / Math.pow(2, 12);
+const RESOLUCION_ZOOM_15 = 156543.03392804097 / Math.pow(2, 15);
 
-const MICRORRUTA_EDITING_STYLE = new Style({
-  stroke: new Stroke({ color: "#d97706", width: 4, lineDash: [2, 6] }),
-  image: new CircleStyle({
-    radius: 6,
-    fill: new Fill({ color: "#d97706" }),
-    stroke: new Stroke({ color: "#fff", width: 2 }),
-  }),
-});
+// Interpola el grosor de una línea entre `min` (alejado, zoom ~12 o más) y
+// `max` (cercano, zoom ~15 o más) según la resolución actual del mapa. Sin
+// esto, un grosor fijo se ve desproporcionadamente grueso al alejar la
+// cámara para ver varias microrrutas a la vez — y con varias rutas cerca
+// entre sí, terminan encimándose visualmente unas con otras.
+function grosorSegunResolucion(resolution: number, min: number, max: number): number {
+  if (resolution >= RESOLUCION_ZOOM_12) return min;
+  if (resolution <= RESOLUCION_ZOOM_15) return max;
+  const t = (RESOLUCION_ZOOM_12 - resolution) / (RESOLUCION_ZOOM_12 - RESOLUCION_ZOOM_15);
+  return min + t * (max - min);
+}
 
-// Reemplaza a MICRORRUTA_STYLE en el resto de rutas mientras se traza una
-// nueva o se redibuja el trazo de una existente, para que no compitan
-// visualmente con lo que se está dibujando en ese momento. La que está en
-// edición sigue viéndose en ámbar (MICRORRUTA_EDITING_STYLE) tal cual, sin
-// atenuar. Opacidad al 40%: lo bastante tenue para no distraer, pero
-// todavía claramente visible (una versión anterior, al 18%, quedó casi
-// invisible).
-const MICRORRUTA_SOFT_STYLE = new Style({
-  stroke: new Stroke({ color: "rgba(37, 99, 235, 0.4)", width: 3 }),
-});
+// Las cuatro variantes de microrruta son ahora funciones de estilo (no
+// objetos Style fijos): OpenLayers las vuelve a llamar en cada render
+// pasándoles la resolución actual, así el grosor se recalcula solo al
+// hacer zoom, sin depender de ningún estado de React. Cada una conserva
+// su grosor relativo de antes (editing > selected > normal/soft en su
+// versión "de cerca"), solo que ahora escalado según el zoom.
+function estiloMicrorrutaNormal(_feature: OlFeature, resolution: number): Style {
+  return new Style({
+    stroke: new Stroke({ color: "#2563eb", width: grosorSegunResolucion(resolution, 1, 3) }),
+  });
+}
+
+// Reemplaza a estiloMicrorrutaNormal en el resto de rutas mientras se
+// traza una nueva o se redibuja el trazo de una existente, para que no
+// compitan visualmente con lo que se está dibujando en ese momento.
+function estiloMicrorrutaSoft(_feature: OlFeature, resolution: number): Style {
+  return new Style({
+    stroke: new Stroke({
+      color: "rgba(37, 99, 235, 0.4)",
+      width: grosorSegunResolucion(resolution, 1, 3),
+    }),
+  });
+}
+
+function estiloMicrorrutaEditing(_feature: OlFeature, resolution: number): Style {
+  return new Style({
+    stroke: new Stroke({
+      color: "#d97706",
+      width: grosorSegunResolucion(resolution, 1.3, 4),
+      lineDash: [2, 6],
+    }),
+    image: new CircleStyle({
+      radius: 6,
+      fill: new Fill({ color: "#d97706" }),
+      stroke: new Stroke({ color: "#fff", width: 2 }),
+    }),
+  });
+}
 
 // Rojo, a propósito: es el color que menos se presta a confusión con el
 // resto de la paleta (verde=barrios/trazo pendiente, dorado=vías,
@@ -83,10 +118,15 @@ const MICRORRUTA_SOFT_STYLE = new Style({
 // dejar el rojo por debajo del azul de la otra según cuál se procesara
 // primero — con un zIndex explícito, la seleccionada siempre gana, sin
 // depender de ese orden interno.
-const MICRORRUTA_SELECTED_STYLE = new Style({
-  stroke: new Stroke({ color: "#dc2626", width: 5 }),
-  zIndex: 10,
-});
+function estiloMicrorrutaSelected(_feature: OlFeature, resolution: number): Style {
+  return new Style({
+    stroke: new Stroke({
+      color: "#dc2626",
+      width: grosorSegunResolucion(resolution, 1.5, 5),
+    }),
+    zIndex: 10,
+  });
+}
 
 const SKETCH_STYLE = new Style({
   stroke: new Stroke({ color: "#059669", width: 3, lineDash: [6, 6] }),
@@ -209,7 +249,7 @@ export default function MicrorrutaMapEditor({
     });
     const microrrutasLayer = new VectorLayer({
       source: new VectorSource(),
-      style: MICRORRUTA_STYLE,
+      style: estiloMicrorrutaNormal,
       zIndex: 3,
     });
     const pendingLayer = new VectorLayer({
@@ -273,26 +313,28 @@ export default function MicrorrutaMapEditor({
   }, [drawing, editingGeometriaId]);
 
   // Estilo de la capa de microrrutas: en edición se ve en ámbar
-  // (MICRORRUTA_EDITING_STYLE), salvo que se haya pedido ocultarla
-  // ("Borrar trazo anterior" — no se dibuja nada para esa feature); mientras
-  // se traza/edita cualquier ruta, el resto se atenúa (MICRORRUTA_SOFT_STYLE)
+  // (estiloMicrorrutaEditing), salvo que se haya pedido ocultarla ("Borrar
+  // trazo anterior" — no se dibuja nada para esa feature); mientras se
+  // traza/edita cualquier ruta, el resto se atenúa (estiloMicrorrutaSoft)
   // para no competir visualmente con el trazo en curso; en cualquier otro
-  // momento, color normal. La selección por clic (rojo) la sigue aplicando
-  // la propia interacción Select más abajo — no se solapa con esto porque
-  // Select se desactiva por completo mientras se dibuja/edita (ver ese
-  // efecto).
+  // momento, color normal. Las tres son funciones de estilo (reciben
+  // resolution) para que el grosor se ajuste solo al hacer zoom — ver
+  // grosorSegunResolucion más arriba. La selección por clic (rojo) la
+  // sigue aplicando la propia interacción Select más abajo — no se solapa
+  // con esto porque Select se desactiva por completo mientras se
+  // dibuja/edita (ver ese efecto).
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
     if (!microrrutasLayer) return;
 
     const atenuar = drawing || editingGeometriaId !== null;
 
-    microrrutasLayer.setStyle((feature) => {
+    microrrutasLayer.setStyle((feature, resolution) => {
       if (feature.get("id") === editingGeometriaId) {
-        return ocultarTrazoOriginal ? undefined : MICRORRUTA_EDITING_STYLE;
+        return ocultarTrazoOriginal ? undefined : estiloMicrorrutaEditing(feature, resolution);
       }
-      if (atenuar) return MICRORRUTA_SOFT_STYLE;
-      return MICRORRUTA_STYLE;
+      if (atenuar) return estiloMicrorrutaSoft(feature, resolution);
+      return estiloMicrorrutaNormal(feature, resolution);
     });
   }, [drawing, editingGeometriaId, ocultarTrazoOriginal]);
 
@@ -736,7 +778,7 @@ export default function MicrorrutaMapEditor({
     const select = new Select({
       condition: click,
       layers: [microrrutasLayer],
-      style: MICRORRUTA_SELECTED_STYLE,
+      style: estiloMicrorrutaSelected,
     });
     map.addInteraction(select);
 

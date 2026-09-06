@@ -10,12 +10,7 @@ import {
 interface RecyclersTableProps {
   recyclers: Recycler[];
   activeTab: RecyclerTab;
-  // Conjunto de ids con el censo en proceso de cambiar — cada fila lleva
-  // su propio spinner de forma independiente, sin importar cuántas estén
-  // en vuelo a la vez.
   togglingIds: Set<number>;
-  // id del reciclador cuyo certificado se está descargando (spinner en su
-  // fila). null = ninguno en proceso.
   descargandoCertificadoId: number | null;
   onEdit: (recycler: Recycler) => void;
   onToggleCenso: (recycler: Recycler) => void;
@@ -37,11 +32,6 @@ export default function RecyclersTable({
 }: RecyclersTableProps) {
   const isHistorico = activeTab === "desvinculados";
 
-  // Barrios + detalle de ubicación juntos — compartido entre la fila de
-  // tabla (desktop) y la tarjeta (mobile) para no repetir esta lógica dos
-  // veces. El detalle es un solo campo general por reciclador (no uno por
-  // cada barrio), así que se agrega una sola vez, al final de toda la
-  // lista de barrios: "La Pradera, El Prado (Edificio San Juan)".
   const renderBarrios = (r: Recycler) => {
     if (r.barrios.length === 0) {
       return <span className="text-gray-300">Sin asignar</span>;
@@ -50,8 +40,6 @@ export default function RecyclersTable({
     return r.detalleUbicacion ? `${nombres} (${r.detalleUbicacion})` : nombres;
   };
 
-  // Botón de acciones — compartido entre la fila de tabla (desktop) y la
-  // tarjeta (mobile) para no duplicar esta lógica dos veces.
   const renderAcciones = (r: Recycler) => (
     <>
       {!isHistorico && (
@@ -156,14 +144,11 @@ export default function RecyclersTable({
                       {CLASIFICACION_LABELS[r.clasificacion]}
                     </span>
                   </td>
-                  {/* whitespace-normal (no truncate): con el detalle de
-                      ubicación agregado, o con varios barrios, el texto
-                      puede ser largo — mejor que pase a una segunda línea
-                      a que se corte con "...". */}
                   <td className="max-w-56 p-4 text-xs whitespace-normal text-gray-600">
                     {renderBarrios(r)}
                   </td>
-                  <td className="max-w-40 truncate p-4 text-xs text-gray-600">
+                  {/* ✅ Cambio aquí: ahora igual que barrios */}
+                  <td className="max-w-56 p-4 text-xs whitespace-normal text-gray-600">
                     {r.microrrutas.length > 0 ? (
                       r.microrrutas.map((m) => m.nombre).join(", ")
                     ) : (
@@ -183,8 +168,7 @@ export default function RecyclersTable({
         </table>
       </div>
 
-      {/* Tarjetas — solo en mobile. Agrupa las 8 columnas en bloques
-          legibles en vez de forzarlas en una fila horizontal. */}
+      {/* Tarjetas — solo en mobile */}
       <div className="divide-y divide-gray-100 md:hidden">
         {recyclers.length === 0 ? (
           <p className="py-6 text-center text-gray-400">No hay recicladores en esta pestaña.</p>

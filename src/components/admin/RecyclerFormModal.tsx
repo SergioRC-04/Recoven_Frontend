@@ -1,5 +1,5 @@
 // components/admin/RecyclerFormModal.tsx
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { FaTimes, FaSpinner, FaRecycle } from "react-icons/fa";
 import { createRecycler, updateRecycler, exportarCertificado } from "../../services/recyclers";
 import { descargarBlob } from "../../lib/descargarBlob";
@@ -73,18 +73,29 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleBarriosChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    update(
-      "barriosIds",
-      Array.from(e.target.selectedOptions).map((opt) => opt.value)
-    );
+  // Handlers para checkboxes de barrios y microrrutas (toggle)
+  const toggleBarrio = (id: string) => {
+    setValues((prev) => {
+      const current = prev.barriosIds;
+      const index = current.indexOf(id);
+      if (index >= 0) {
+        return { ...prev, barriosIds: current.filter((b) => b !== id) };
+      } else {
+        return { ...prev, barriosIds: [...current, id] };
+      }
+    });
   };
 
-  const handleMicrorrutasChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    update(
-      "microrrutasIds",
-      Array.from(e.target.selectedOptions).map((opt) => parseInt(opt.value, 10))
-    );
+  const toggleMicrorruta = (id: number) => {
+    setValues((prev) => {
+      const current = prev.microrrutasIds;
+      const index = current.indexOf(id);
+      if (index >= 0) {
+        return { ...prev, microrrutasIds: current.filter((m) => m !== id) };
+      } else {
+        return { ...prev, microrrutasIds: [...current, id] };
+      }
+    });
   };
 
   const descargarCertificado = async (id: number, nombreCompleto: string) => {
@@ -119,10 +130,6 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
       return;
     }
 
-    // A partir de aquí ya no se debe volver a llamar ningún setState de
-    // este componente — onClose() lo desmonta. Por eso el paso del
-    // certificado, que puede tardar (await de la descarga), queda fuera
-    // del try/catch/finally de arriba en vez de en un finally.
     setLoading(false);
     onSaved();
     onClose();
@@ -235,44 +242,50 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Barrios: lista de checkboxes con scroll */}
               <div>
                 <label className="block text-sm font-bold text-gray-700">Barrios asignados</label>
-                <select
-                  multiple
-                  size={6}
-                  value={values.barriosIds}
-                  onChange={handleBarriosChange}
-                  className="mt-1 w-full rounded-xl border border-gray-300 p-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
+                <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-300 p-2">
                   {barrios.map((b) => (
-                    <option key={b.identificador} value={b.identificador}>
-                      {b.nombre_barrio}
-                    </option>
+                    <label
+                      key={b.identificador}
+                      className="flex items-center gap-2 py-1 hover:bg-gray-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={values.barriosIds.includes(b.identificador)}
+                        onChange={() => toggleBarrio(b.identificador)}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-gray-700">{b.nombre_barrio}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  Mantén Ctrl (o Cmd) para seleccionar varios.
+                  Haz clic en cada barrio para seleccionarlo o deseleccionarlo.
                 </p>
               </div>
+
+              {/* Microrrutas: lista de checkboxes con scroll */}
               <div>
                 <label className="block text-sm font-bold text-gray-700">
                   Microrrutas asignadas
                 </label>
-                <select
-                  multiple
-                  size={6}
-                  value={values.microrrutasIds.map(String)}
-                  onChange={handleMicrorrutasChange}
-                  className="mt-1 w-full rounded-xl border border-gray-300 p-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
+                <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-300 p-2">
                   {microrrutas.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre}
-                    </option>
+                    <label key={m.id} className="flex items-center gap-2 py-1 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={values.microrrutasIds.includes(m.id)}
+                        onChange={() => toggleMicrorruta(m.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-gray-700">{m.nombre}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  Mantén Ctrl (o Cmd) para seleccionar varias.
+                  Haz clic en cada microrruta para seleccionarla o deseleccionarla.
                 </p>
               </div>
             </div>
