@@ -13,6 +13,7 @@ import Select from "ol/interaction/Select";
 import { click } from "ol/events/condition";
 import Collection from "ol/Collection";
 import type OlFeature from "ol/Feature";
+import type { FeatureLike } from "ol/Feature";
 import { fromLonLat } from "ol/proj";
 import { Style, Stroke, Fill, Circle as CircleStyle } from "ol/style";
 import { isEmpty } from "ol/extent";
@@ -77,7 +78,7 @@ function grosorSegunResolucion(resolution: number, min: number, max: number): nu
 // hacer zoom, sin depender de ningún estado de React. Cada una conserva
 // su grosor relativo de antes (editing > selected > normal/soft en su
 // versión "de cerca"), solo que ahora escalado según el zoom.
-function estiloMicrorrutaNormal(_feature: OlFeature, resolution: number): Style {
+function estiloMicrorrutaNormal(_feature: FeatureLike, resolution: number): Style {
   return new Style({
     stroke: new Stroke({ color: "#2563eb", width: grosorSegunResolucion(resolution, 1, 3) }),
   });
@@ -86,7 +87,7 @@ function estiloMicrorrutaNormal(_feature: OlFeature, resolution: number): Style 
 // Reemplaza a estiloMicrorrutaNormal en el resto de rutas mientras se
 // traza una nueva o se redibuja el trazo de una existente, para que no
 // compitan visualmente con lo que se está dibujando en ese momento.
-function estiloMicrorrutaSoft(_feature: OlFeature, resolution: number): Style {
+function estiloMicrorrutaSoft(_feature: FeatureLike, resolution: number): Style {
   return new Style({
     stroke: new Stroke({
       color: "rgba(37, 99, 235, 0.4)",
@@ -95,7 +96,7 @@ function estiloMicrorrutaSoft(_feature: OlFeature, resolution: number): Style {
   });
 }
 
-function estiloMicrorrutaEditing(_feature: OlFeature, resolution: number): Style {
+function estiloMicrorrutaEditing(_feature: FeatureLike, resolution: number): Style {
   return new Style({
     stroke: new Stroke({
       color: "#d97706",
@@ -118,7 +119,7 @@ function estiloMicrorrutaEditing(_feature: OlFeature, resolution: number): Style
 // dejar el rojo por debajo del azul de la otra según cuál se procesara
 // primero — con un zIndex explícito, la seleccionada siempre gana, sin
 // depender de ese orden interno.
-function estiloMicrorrutaSelected(_feature: OlFeature, resolution: number): Style {
+function estiloMicrorrutaSelected(_feature: FeatureLike, resolution: number): Style {
   return new Style({
     stroke: new Stroke({
       color: "#dc2626",
