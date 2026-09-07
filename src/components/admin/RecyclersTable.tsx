@@ -1,15 +1,13 @@
 // components/admin/RecyclersTable.tsx
 import { FaEdit, FaUserSlash, FaUserCheck, FaSpinner, FaFilePdf } from "react-icons/fa";
-import {
-  CLASIFICACION_LABELS,
-  CLASIFICACION_COLORS,
-  type Recycler,
-  type RecyclerTab,
-} from "../../types/recycler";
+import { CLASIFICACION_LABELS, CLASIFICACION_COLORS, type Recycler } from "../../types/recycler";
 
 interface RecyclersTableProps {
   recyclers: Recycler[];
-  activeTab: RecyclerTab;
+  // Reemplaza al antiguo activeTab === "desvinculados" — ahora el estado
+  // (activos/desvinculados) es una dimensión de filtro independiente
+  // (ver AdminRecyclers.tsx), no una pestaña con su propio id de tabla.
+  isHistorico: boolean;
   togglingIds: Set<number>;
   descargandoCertificadoId: number | null;
   onEdit: (recycler: Recycler) => void;
@@ -21,7 +19,7 @@ interface RecyclersTableProps {
 
 export default function RecyclersTable({
   recyclers,
-  activeTab,
+  isHistorico,
   togglingIds,
   descargandoCertificadoId,
   onEdit,
@@ -30,8 +28,6 @@ export default function RecyclersTable({
   onReactivar,
   onDescargarCertificado,
 }: RecyclersTableProps) {
-  const isHistorico = activeTab === "desvinculados";
-
   const renderBarrios = (r: Recycler) => {
     if (r.barrios.length === 0) {
       return <span className="text-gray-300">Sin asignar</span>;
@@ -39,6 +35,13 @@ export default function RecyclersTable({
     const nombres = r.barrios.map((b) => b.nombreBarrio || b.barrioId).join(", ");
     return r.detalleUbicacion ? `${nombres} (${r.detalleUbicacion})` : nombres;
   };
+
+  const renderRutas = (r: Recycler) =>
+    r.microrrutas.length > 0 ? (
+      r.microrrutas.map((m) => m.nombre).join(", ")
+    ) : (
+      <span className="text-gray-300">Sin asignar</span>
+    );
 
   const renderAcciones = (r: Recycler) => (
     <>
@@ -125,7 +128,7 @@ export default function RecyclersTable({
             {recyclers.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-gray-400">
-                  No hay recicladores en esta pestaña.
+                  No hay recicladores con estos filtros.
                 </td>
               </tr>
             ) : (
@@ -147,13 +150,8 @@ export default function RecyclersTable({
                   <td className="max-w-56 p-4 text-xs whitespace-normal text-gray-600">
                     {renderBarrios(r)}
                   </td>
-                  {/* ✅ Cambio aquí: ahora igual que barrios */}
                   <td className="max-w-56 p-4 text-xs whitespace-normal text-gray-600">
-                    {r.microrrutas.length > 0 ? (
-                      r.microrrutas.map((m) => m.nombre).join(", ")
-                    ) : (
-                      <span className="text-gray-300">Sin asignar</span>
-                    )}
+                    {renderRutas(r)}
                   </td>
                   <td className="p-4 text-center">{renderInterruptorCenso(r)}</td>
                   <td className="p-4">
@@ -171,7 +169,7 @@ export default function RecyclersTable({
       {/* Tarjetas — solo en mobile */}
       <div className="divide-y divide-gray-100 md:hidden">
         {recyclers.length === 0 ? (
-          <p className="py-6 text-center text-gray-400">No hay recicladores en esta pestaña.</p>
+          <p className="py-6 text-center text-gray-400">No hay recicladores con estos filtros.</p>
         ) : (
           recyclers.map((r) => (
             <div key={r.id} className={`p-4 ${isHistorico ? "text-gray-500" : ""}`}>
@@ -198,13 +196,7 @@ export default function RecyclersTable({
                   <span className="block font-bold tracking-wide text-gray-400 uppercase">
                     Rutas
                   </span>
-                  <span className="text-gray-600">
-                    {r.microrrutas.length > 0 ? (
-                      r.microrrutas.map((m) => m.nombre).join(", ")
-                    ) : (
-                      <span className="text-gray-300">Sin asignar</span>
-                    )}
-                  </span>
+                  <span className="text-gray-600">{renderRutas(r)}</span>
                 </div>
               </div>
 

@@ -33,27 +33,16 @@ export type TipoDocumento =
 
 export const TIPO_DOCUMENTO_LABELS: Record<TipoDocumento, string> = {
   CEDULA_CIUDADANIA: "Cédula de ciudadanía",
-  CEDULA_EXTRANJERIA: "Cédula extranjera",
+  CEDULA_EXTRANJERIA: "Cédula de extranjería",
   CEDULA_VENEZOLANA: "Cédula venezolana",
   PASAPORTE: "Pasaporte",
   OTRO: "Otro",
 };
 
-export type RecyclerTab =
-  "todos" | "con_ruta" | "sin_ruta" | "nuevos" | "a_quitar" | "desvinculados";
-
-export const RECYCLER_TABS: { id: RecyclerTab; label: string }[] = [
-  { id: "todos", label: "Todos" },
-  { id: "con_ruta", label: "Con Ruta" },
-  { id: "sin_ruta", label: "Sin Ruta" },
-  { id: "nuevos", label: "Nuevos" },
-  { id: "a_quitar", label: "A Quitar" },
-  { id: "desvinculados", label: "Desvinculados (Histórico)" },
-];
-
-// Los 6 reportes exportables — distintos de RecyclerTab: no incluyen
-// "nuevos"/"a_quitar" (no se pidieron como export) pero sí "censados"/
-// "no_censados" (que no son pestañas de la tabla, solo filtros de export).
+// Los 6 reportes exportables — censados/no_censados y con_ruta/sin_ruta
+// coinciden con dimensiones de filtro de la tabla; desvinculados también,
+// aunque ahí se expresa como un valor de "estado" en vez de su propia
+// pestaña (ver EstadoFiltro en AdminRecyclers.tsx).
 export type TipoExportRecyclers =
   "todos" | "desvinculados" | "censados" | "no_censados" | "con_ruta" | "sin_ruta";
 
@@ -116,12 +105,24 @@ export interface Recycler {
 }
 
 // ============================================================
-// FILTROS (parámetros de query en GET /admin/recyclers)
+// FILTROS (parámetros de query en GET /recyclers)
 // ============================================================
 
+// Reemplaza al antiguo RecyclerTab (una sola pestaña excluyente): ahora
+// son dimensiones independientes que se combinan entre sí — se puede
+// filtrar por ruta, censo, clasificación y barrio a la vez, y la tabla
+// muestra la intersección de todo lo activo.
 export interface RecyclersFilters {
-  tab?: RecyclerTab;
+  // true = ver el histórico de desvinculados; false/undefined = solo activos.
+  desvinculados?: boolean;
+  rutas?: "con_ruta" | "sin_ruta";
+  clasificacion?: Clasificacion;
   censado?: boolean;
+  // identificador del barrio (mismo campo que usan los selects de barrio
+  // del resto de la app).
+  barrioId?: string;
+  // Coincide contra nombre, cédula, nombre de barrio asignado y nombre de
+  // ruta asignada — no solo nombre/cédula como antes.
   search?: string;
 }
 

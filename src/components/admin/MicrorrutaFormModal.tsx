@@ -14,6 +14,7 @@ import {
   aplicaTipoBarrido,
   type LineStringGeoJson,
   type MicrorrutaFormValues,
+  type MicrorrutaProperties,
 } from "../../types/microrruta";
 import FieldHelp from "./FieldHelp";
 
@@ -27,6 +28,11 @@ type MicrorrutaFormModalProps =
       distanciaTotalKm: number;
       onClose: () => void;
       onSaved: () => void;
+      // Se llama solo al CREAR (no al editar), con la microrruta recién
+      // creada — el padre lo usa para ofrecer asignarle un trabajador de
+      // inmediato. Opcional: si no se pasa, el flujo de creación queda
+      // igual que antes.
+      onCreated?: (microrruta: MicrorrutaProperties) => void;
     }
   | {
       mode: "edit";
@@ -145,10 +151,12 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
     try {
       if (props.mode === "edit") {
         await updateMicrorruta(props.microrrutaId, payload);
+        onSaved();
       } else {
-        await createMicrorruta({ ...payload, geojson: props.geojson });
+        const creada = await createMicrorruta({ ...payload, geojson: props.geojson });
+        onSaved();
+        props.onCreated?.(creada);
       }
-      onSaved();
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al guardar la microrruta.");

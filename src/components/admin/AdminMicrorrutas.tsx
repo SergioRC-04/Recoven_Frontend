@@ -15,7 +15,7 @@ import {
   deleteMicrorruta,
   exportarMicrorrutasExcel,
 } from "../../services/microrutas";
-import { getRecyclersByTab } from "../../services/recyclers";
+import { getRecyclers } from "../../services/recyclers";
 import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
 import type {
   Localidad,
@@ -35,6 +35,7 @@ import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
 import MicrorrutasTable from "./MicrorrutasTable";
 import MicrorrutaFormModal from "./MicrorrutaFormModal";
 import ExportarCapasModal from "./ExportarCapasModal";
+import AsignarTrabajadorModal from "./AsignarTrabajadorModal";
 import {
   generarReporteMicrorruta,
   generarReporteMicrorrutas,
@@ -71,6 +72,12 @@ export default function AdminMicrorrutas() {
   const [descargandoExcel, setDescargandoExcel] = useState(false);
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
+  // Microrruta recién creada, en espera de que el usuario elija (o no) un
+  // trabajador para asignarle — se abre justo después de que
+  // MicrorrutaFormModal en modo "create" avisa que terminó (onCreated),
+  // nunca al editar una ya existente.
+  const [asignandoTrabajadorPara, setAsignandoTrabajadorPara] =
+    useState<MicrorrutaProperties | null>(null);
 
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
@@ -90,11 +97,17 @@ export default function AdminMicrorrutas() {
       .catch((err) => console.error("Error cargando localidades:", err));
   }, []);
 
+  // Recicladores — alimentan la columna "Trabajador" de la tabla Y la
+  // lista de opciones de AsignarTrabajadorModal. refreshKey en las
+  // dependencias: tras asignar un trabajador a una microrruta recién
+  // creada, refresh() dispara este mismo efecto, así la columna
+  // "Trabajador" recoge la asignación sin necesidad de un fetch aparte
+  // solo para eso.
   useEffect(() => {
-    getRecyclersByTab("todos")
+    getRecyclers({})
       .then(setRecyclers)
       .catch((err) => console.error("Error cargando recicladores:", err));
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     getBarriosGeoJson()
@@ -495,6 +508,7 @@ export default function AdminMicrorrutas() {
           distanciaTotalKm={formModalState.distanciaTotalKm}
           onClose={handleCloseModal}
           onSaved={refresh}
+          onCreated={(mr) => setAsignandoTrabajadorPara(mr)}
         />
       )}
       {formModalState?.mode === "edit" && (
@@ -504,6 +518,18 @@ export default function AdminMicrorrutas() {
           initialValues={toMicrorrutaFormValues(formModalState.microrruta)}
           onClose={handleCloseModal}
           onSaved={refresh}
+        />
+      )}
+
+      {asignandoTrabajadorPara && (
+        <AsignarTrabajadorModal
+          microrruta={asignandoTrabajadorPara}
+          recyclers={recyclers}
+          onClose={() => setAsignandoTrabajadorPara(null)}
+          onAssigned={() => {
+            setAsignandoTrabajadorPara(null);
+            refresh();
+          }}
         />
       )}
     </div>

@@ -3,8 +3,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   FaUsers,
   FaCheckCircle,
-  FaExclamationTriangle,
-  FaUserSlash,
+  FaTimesCircle,
+  FaRoute,
+  FaBan,
   FaPlus,
   FaSearch,
   FaFileExcel,
@@ -12,16 +13,17 @@ import {
   FaSpinner,
 } from "react-icons/fa";
 import {
-  getRecyclersByTab,
+  getRecyclers,
   toggleCenso,
   desvincularRecycler,
   reactivarRecycler,
   exportarCertificado,
   obtenerEstadoCertificadosGeneral,
-  obtenerKpisRecyclers,
 } from "../../services/recyclers";
+import { getBarriosList } from "../../services/geo";
 import { descargarBlob } from "../../lib/descargarBlob";
-import { RECYCLER_TABS, type Recycler, type RecyclerTab } from "../../types/recycler";
+import { CLASIFICACION_LABELS, type Recycler, type Clasificacion } from "../../types/recycler";
+import type { Barrio } from "../../types/geo";
 import RecyclersTable from "./RecyclersTable";
 import RecyclerFormModal from "./RecyclerFormModal";
 import ExportarRecyclersModal from "./ExportarRecyclersModal";
@@ -52,6 +54,9 @@ function KpiCard({ label, value, icon, accent }: KpiCardProps) {
 }
 
 type EditingState = Recycler | "new" | null;
+type EstadoFiltro = "activos" | "desvinculados";
+type RutasFiltro = "" | "con_ruta" | "sin_ruta";
+type CensoFiltro = "todos" | "censados" | "no_censados";
 
 // Sondeo del estado del certificado general tras una mutación — cada
 // cuánto se pregunta, y cuántas veces como máximo antes de rendirse (tope
@@ -60,63 +65,45 @@ const CERTIFICADOS_POLL_INTERVAL_MS = 1500;
 const CERTIFICADOS_POLL_MAX_INTENTOS = 20; // ~30s
 
 export default function AdminRecyclers() {
-  const [activeTab, setActiveTab] = useState<RecyclerTab>("todos");
+  // Cinco dimensiones de filtro, independientes y combinables entre sí —
+  // reemplazan a las antiguas pestañas (una sola, excluyente) por
+  // selects, tal como se pidió. "" o "todos" significa "sin filtrar por
+  // esta dimensión".
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("activos");
+  const [rutasFiltro, setRutasFiltro] = useState<RutasFiltro>("");
+  const [clasificacionFiltro, setClasificacionFiltro] = useState<Clasificacion | "">("");
+  const [censoFiltro, setCensoFiltro] = useState<CensoFiltro>("todos");
+  const [barrioFiltro, setBarrioFiltro] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  // "todos" no envía el parámetro censado; "censados"/"no_censados" sí,
-  // como true/false — independiente de activeTab, los dos filtros se
-  // combinan (p. ej. "Con ruta" + "Sin censar" a la vez).
-  const [censoFilter, setCensoFilter] = useState<"todos" | "censados" | "no_censados">("todos");
+
+  // Barrios para el select de filtro — carga única al montar, igual que
+  // en AdminMicrorrutas.tsx.
+  const [barrios, setBarrios] = useState<Barrio[]>([]);
 
   // null = cargando, [] o array con datos = cargado.
-  // loading se deriva de recyclers === null para no llamar setState en el cuerpo del efecto.
   const [recyclers, setRecyclers] = useState<Recycler[] | null>(null);
   const loading = recyclers === null;
 
-  // Conjunto de ids con el censo en proceso de cambiar — no un solo id,
-  // para que tocar una fila mientras otra sigue en vuelo no le "robe" el
-  // spinner a la primera (antes, con un solo togglingId, el segundo clic
-  // sobrescribía al primero).
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [descargandoCertificadoId, setDescargandoCertificadoId] = useState<number | null>(null);
   const [editingRecycler, setEditingRecycler] = useState<EditingState>(null);
   const [mostrarExportar, setMostrarExportar] = useState(false);
 
-  // Certificado general (combinado): urlCertificadosGeneral es la última
-  // URL conocida — el botón "Exportar Certificados" solo la usa tal cual,
-  // sin volver a pedir nada al backend en el momento del clic.
-  // actualizandoCertificados se enciende justo después de CUALQUIER
-  // cambio a un reciclador (crear, editar, censar, desvincular,
-  // reactivar) — no al apretar el botón de exportar — y se sondea el
-  // estado hasta que la regeneración en segundo plano del backend
-  // termine. Ver iniciarEscuchaCertificados más abajo.
   const [urlCertificadosGeneral, setUrlCertificadosGeneral] = useState<string | null>(null);
   const [actualizandoCertificados, setActualizandoCertificados] = useState(false);
   const certificadosPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const certificadosPollIntentosRef = useRef(0);
 
-  // KPIs derivados de "todos" + "desvinculados".
-  const [kpis, setKpis] = useState({ total: 0, censados: 0, sinCensar: 0, desvinculados: 0 });
-
-  // Contadores de refresco — incrementar para forzar una recarga sin pasar
-  // funciones async como dependencias de useEffect.
+  // Contador de refresco — incrementar fuerza una recarga de la tabla sin
+  // pasar una función async como dependencia de useEffect. Ya no hace
+  // falta un contador aparte para KPIs: se calculan derivados de
+  // `recyclers` (ver más abajo), así que se actualizan solos cada vez que
+  // la tabla lo hace.
   const [tableKey, setTableKey] = useState(0);
-  const [kpisKey, setKpisKey] = useState(0);
+  const refresh = () => setTableKey((k) => k + 1);
 
-  const refreshTable = () => setTableKey((k) => k + 1);
-  const refreshKpis = () => setKpisKey((k) => k + 1);
-  const refreshAll = () => {
-    refreshTable();
-    refreshKpis();
-  };
-
-  // Guardas contra respuestas obsoletas: como recovenApi.get no acepta un
-  // AbortSignal, un AbortController no cancela la petición real — solo
-  // marcaría un signal que nadie lee. En su lugar, cada efecto se identifica
-  // con un número de "petición vigente"; si la respuesta llega después de
-  // que el efecto ya cambió (otra pestaña, otra búsqueda, etc.), se descarta.
   const tableRequestIdRef = useRef(0);
-  const kpisRequestIdRef = useRef(0);
 
   // Debounce del campo de búsqueda (400 ms).
   useEffect(() => {
@@ -124,16 +111,32 @@ export default function AdminRecyclers() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  // Tabla de recicladores — se recarga al cambiar tab, censoFilter, search
-  // o tableKey. El orden estable (por nombre, no por updatedAt) lo
-  // garantiza el backend (recyclers.service.ts findAll: orderBy
-  // nombreCompleto asc) — así un refresh completo tras activar/desactivar
-  // el censo no reordena la lista ni manda el registro tocado al principio.
+  // Barrios para el filtro — una sola vez.
+  useEffect(() => {
+    getBarriosList()
+      .then((data) => {
+        const ordenados = [...data].sort((a, b) =>
+          a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
+        );
+        setBarrios(ordenados);
+      })
+      .catch((err) => console.error("Error cargando barrios para el filtro:", err));
+  }, []);
+
+  // Tabla de recicladores — se recarga al cambiar cualquiera de las cinco
+  // dimensiones de filtro o tableKey. Las cinco viajan combinadas en la
+  // misma consulta (AND), no una a la vez como las pestañas antiguas.
   useEffect(() => {
     const requestId = ++tableRequestIdRef.current;
-    const censado = censoFilter === "todos" ? undefined : censoFilter === "censados";
 
-    getRecyclersByTab(activeTab, search || undefined, censado)
+    getRecyclers({
+      desvinculados: estadoFiltro === "desvinculados",
+      rutas: rutasFiltro || undefined,
+      clasificacion: clasificacionFiltro || undefined,
+      censado: censoFiltro === "todos" ? undefined : censoFiltro === "censados",
+      barrioId: barrioFiltro || undefined,
+      search: search || undefined,
+    })
       .then((data) => {
         if (tableRequestIdRef.current !== requestId) return; // respuesta obsoleta, se ignora
         setRecyclers(data);
@@ -147,27 +150,21 @@ export default function AdminRecyclers() {
     return () => {
       setRecyclers(null); // → loading = true durante el siguiente fetch
     };
-  }, [activeTab, search, censoFilter, tableKey]);
+  }, [estadoFiltro, rutasFiltro, clasificacionFiltro, censoFiltro, barrioFiltro, search, tableKey]);
 
-  // KPIs — se recargan al montar y cuando kpisKey cambia. Un solo
-  // endpoint liviano (COUNT, sin barrios/microrrutas anidados) en vez de
-  // las dos consultas completas que se usaban antes solo para contar —
-  // esto es lo que hacía sentir lento cada toggle de censo: cada clic
-  // disparaba la consulta de la tabla Y estas dos consultas pesadas a la
-  // vez.
-  useEffect(() => {
-    const requestId = ++kpisRequestIdRef.current;
-
-    obtenerKpisRecyclers()
-      .then((data) => {
-        if (kpisRequestIdRef.current !== requestId) return;
-        setKpis(data);
-      })
-      .catch((err) => {
-        if (kpisRequestIdRef.current !== requestId) return;
-        console.error("Error cargando KPIs de recicladores:", err);
-      });
-  }, [kpisKey]);
+  // KPIs derivados de la lista YA filtrada — no un fetch aparte. Esto es
+  // justamente lo que hace que "obedezcan a los filtros": si el filtro
+  // activo deja 50 personas, recyclers tiene 50 elementos, y estos cinco
+  // números salen de contar sobre ese mismo array. Se recalculan solos
+  // cada vez que recyclers cambia (incluida la actualización local
+  // optimista de handleToggleCenso), sin necesidad de un refresco aparte.
+  const kpis = {
+    total: recyclers?.length ?? 0,
+    censados: recyclers?.filter((r) => r.censado).length ?? 0,
+    noCensados: recyclers?.filter((r) => !r.censado).length ?? 0,
+    conRutas: recyclers?.filter((r) => r.microrrutas.length > 0).length ?? 0,
+    sinRutas: recyclers?.filter((r) => r.microrrutas.length === 0).length ?? 0,
+  };
 
   // Detiene el sondeo (si había uno en curso) — se llama tanto al
   // terminar exitosamente como al desmontar el componente.
@@ -197,9 +194,8 @@ export default function AdminRecyclers() {
   // editar, censar, desvincular, reactivar) — no al apretar el botón de
   // exportar. Pone el botón "Exportar Certificados" en estado
   // "Actualizando..." y sondea el estado hasta que la regeneración en
-  // segundo plano del backend termine (ver dispararRegeneracionReporteCertificados
-  // en recyclers.service.ts) — eso es "estar a la escucha" de que
-  // terminó, sin que el propio botón dispare ni espere nada él mismo.
+  // segundo plano del backend termine — eso es "estar a la escucha" de
+  // que terminó, sin que el propio botón dispare ni espere nada él mismo.
   const iniciarEscuchaCertificados = () => {
     setActualizandoCertificados(true);
     detenerEscuchaCertificados();
@@ -208,9 +204,6 @@ export default function AdminRecyclers() {
     certificadosPollRef.current = setInterval(() => {
       certificadosPollIntentosRef.current += 1;
       if (certificadosPollIntentosRef.current > CERTIFICADOS_POLL_MAX_INTENTOS) {
-        // Tope de seguridad: si algo quedó atascado del lado del backend
-        // (el marcador nunca se quitó), no dejamos el botón bloqueado
-        // para siempre — se reactiva igual, con la última URL conocida.
         setActualizandoCertificados(false);
         detenerEscuchaCertificados();
         return;
@@ -220,17 +213,12 @@ export default function AdminRecyclers() {
   };
 
   // Estado inicial del certificado general al cargar la página — una sola
-  // consulta, sin sondeo (no hay ninguna mutación en curso todavía). El
-  // cleanup detiene cualquier sondeo que hubiera quedado activo si el
-  // componente se desmonta a mitad de uno.
+  // consulta, sin sondeo.
   useEffect(() => {
     // consultarEstadoCertificados es async y hace un await real (una
-    // petición de red) antes de llamar a setState — es exactamente el
-    // patrón "llamar a setState en un callback cuando el estado externo
-    // cambia" que React recomienda para efectos que cargan datos, no un
-    // setState síncrono dentro del efecto. El linter no distingue esto
-    // porque la función está definida aparte y no puede rastrear que el
-    // setState queda después del await.
+    // petición de red) antes de llamar a setState — no un setState
+    // síncrono dentro del efecto. El linter no distingue esto porque la
+    // función está definida aparte.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     consultarEstadoCertificados();
     return () => detenerEscuchaCertificados();
@@ -242,16 +230,12 @@ export default function AdminRecyclers() {
     try {
       await toggleCenso(recycler.id);
       // Solo esa fila cambió — se actualiza en el estado local en vez de
-      // recargar toda la tabla desde el backend (que sigue siendo
-      // necesario cuando cambia un FILTRO, porque ahí sí cambia cuáles
-      // filas deberían aparecer; aquí no cambia nada de eso).
+      // recargar toda la tabla desde el backend. Los KPIs de censo se
+      // recalculan solos, al ser derivados de este mismo array.
       setRecyclers(
         (prev) =>
           prev?.map((r) => (r.id === recycler.id ? { ...r, censado: !r.censado } : r)) ?? prev
       );
-      // Censados/Sin Censar sí cambian — pero esto ya es liviano
-      // (obtenerKpisRecyclers), así que no hace falta evitarlo también.
-      refreshKpis();
       iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error actualizando censo:", error);
@@ -274,7 +258,7 @@ export default function AdminRecyclers() {
       return;
     try {
       await desvincularRecycler(recycler.id);
-      refreshAll();
+      refresh();
       iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error desvinculando reciclador:", error);
@@ -286,7 +270,7 @@ export default function AdminRecyclers() {
     if (!confirm(`¿Reactivar a ${recycler.nombreCompleto}?`)) return;
     try {
       await reactivarRecycler(recycler.id);
-      refreshAll();
+      refresh();
       iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error reactivando reciclador:", error);
@@ -307,18 +291,11 @@ export default function AdminRecyclers() {
     }
   };
 
-  // Se llama cuando el formulario (crear o editar) guarda con éxito —
-  // además del refresh de siempre, "escucha" la regeneración del
-  // certificado general que esa creación/edición disparó en el backend.
   const handleRecyclerSaved = () => {
-    refreshAll();
+    refresh();
     iniciarEscuchaCertificados();
   };
 
-  // El botón solo abre la URL que ya se conoce (de la última consulta o
-  // sondeo) — no llama al backend en el momento del clic. Mientras
-  // actualizandoCertificados es true el botón está deshabilitado, así que
-  // esto nunca se ejecuta con una URL a medio regenerar.
   const handleExportarCertificadosGeneral = () => {
     if (!urlCertificadosGeneral) return;
     window.open(urlCertificadosGeneral, "_blank");
@@ -364,9 +341,9 @@ export default function AdminRecyclers() {
 
       {mostrarExportar && <ExportarRecyclersModal onClose={() => setMostrarExportar(false)} />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
-          label="Total Activos"
+          label="Total"
           value={kpis.total}
           icon={<FaUsers />}
           accent="bg-emerald-50 text-emerald-600"
@@ -378,55 +355,121 @@ export default function AdminRecyclers() {
           accent="bg-blue-50 text-blue-600"
         />
         <KpiCard
-          label="Sin Censar"
-          value={kpis.sinCensar}
-          icon={<FaExclamationTriangle />}
+          label="No Censados"
+          value={kpis.noCensados}
+          icon={<FaTimesCircle />}
           accent="bg-amber-50 text-amber-600"
         />
         <KpiCard
-          label="Desvinculados"
-          value={kpis.desvinculados}
-          icon={<FaUserSlash />}
+          label="Con Rutas"
+          value={kpis.conRutas}
+          icon={<FaRoute />}
+          accent="bg-emerald-50 text-emerald-600"
+        />
+        <KpiCard
+          label="Sin Rutas"
+          value={kpis.sinRutas}
+          icon={<FaBan />}
           accent="bg-red-50 text-red-600"
         />
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {RECYCLER_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
-                activeTab === tab.id
-                  ? "bg-emerald-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
+      {/* Filtros — cinco dimensiones independientes (select) + búsqueda de
+          texto libre, en vez de las antiguas pestañas excluyentes. */}
+      <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Estado
+          </label>
           <select
-            value={censoFilter}
-            onChange={(e) => setCensoFilter(e.target.value as "todos" | "censados" | "no_censados")}
-            className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            value={estadoFiltro}
+            onChange={(e) => setEstadoFiltro(e.target.value as EstadoFiltro)}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           >
-            <option value="todos">Censo: todos</option>
+            <option value="activos">Activos</option>
+            <option value="desvinculados">Desvinculados (Histórico)</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Filtrar Rutas
+          </label>
+          <select
+            value={rutasFiltro}
+            onChange={(e) => setRutasFiltro(e.target.value as RutasFiltro)}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          >
+            <option value="">Todas</option>
+            <option value="con_ruta">Con ruta</option>
+            <option value="sin_ruta">Sin ruta</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Clasificación
+          </label>
+          <select
+            value={clasificacionFiltro}
+            onChange={(e) => setClasificacionFiltro(e.target.value as Clasificacion | "")}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          >
+            <option value="">Todas</option>
+            {Object.entries(CLASIFICACION_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Censo
+          </label>
+          <select
+            value={censoFiltro}
+            onChange={(e) => setCensoFiltro(e.target.value as CensoFiltro)}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          >
+            <option value="todos">Todos</option>
             <option value="censados">Censados</option>
             <option value="no_censados">Sin censar</option>
           </select>
-          <div className="relative">
-            <FaSearch className="absolute top-1/2 left-3 -translate-y-1/2 text-xs text-gray-400" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Buscar por nombre o cédula..."
-              className="rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Barrio
+          </label>
+          <select
+            value={barrioFiltro}
+            onChange={(e) => setBarrioFiltro(e.target.value)}
+            disabled={barrios.length === 0}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+          >
+            <option value="">Todos</option>
+            {barrios.map((b) => (
+              <option key={b.identificador} value={b.identificador}>
+                {b.nombre_barrio}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative ml-auto">
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Buscar
+          </label>
+          <FaSearch className="absolute top-1/2 left-3 mt-0.5 -translate-y-1/2 text-xs text-gray-400" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Nombre, cédula, barrio o ruta..."
+            className="mt-1 rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          />
         </div>
       </div>
 
@@ -435,7 +478,7 @@ export default function AdminRecyclers() {
       ) : (
         <RecyclersTable
           recyclers={recyclers ?? []}
-          activeTab={activeTab}
+          isHistorico={estadoFiltro === "desvinculados"}
           togglingIds={togglingIds}
           descargandoCertificadoId={descargandoCertificadoId}
           onEdit={setEditingRecycler}

@@ -2,7 +2,7 @@
 import { recovenApi } from "./api";
 import type {
   Recycler,
-  RecyclerTab,
+  RecyclersFilters,
   RecyclerCreatePayload,
   RecyclerUpdatePayload,
   TipoExportRecyclers,
@@ -13,43 +13,25 @@ import type {
 // por lo que TODOS los métodos requieren autenticación (requiresAuth: true).
 
 /**
- * Lista recicladores filtrando por pestaña, censo y/o búsqueda de
- * nombre/cédula. Cuando tab === "todos" no se envía el parámetro tab, y
- * el backend devuelve todos los activos (estadoVinculacion = ACTIVO,
- * deletedAt = null).
+ * Lista recicladores combinando las dimensiones de filtro que hagan
+ * falta (ruta, censo, clasificación, barrio, estado, búsqueda de texto) —
+ * todas opcionales y combinables entre sí, a diferencia del antiguo
+ * esquema de una sola pestaña excluyente. `search` ahora también hace
+ * match contra el nombre del barrio y el nombre de la ruta asignados, no
+ * solo nombre/cédula.
  *
  * Controller: GET /recyclers  (JwtAuthGuard — nivel de clase)
  */
-export async function getRecyclersByTab(
-  tab: RecyclerTab,
-  search?: string,
-  censado?: boolean
-): Promise<Recycler[]> {
+export async function getRecyclers(filters: RecyclersFilters): Promise<Recycler[]> {
   const params = new URLSearchParams();
-  if (tab !== "todos") params.append("tab", tab);
-  if (search) params.append("search", search);
-  if (censado !== undefined) params.append("censado", String(censado));
+  if (filters.desvinculados) params.append("desvinculados", "true");
+  if (filters.rutas) params.append("rutas", filters.rutas);
+  if (filters.clasificacion) params.append("clasificacion", filters.clasificacion);
+  if (filters.censado !== undefined) params.append("censado", String(filters.censado));
+  if (filters.barrioId) params.append("barrioId", filters.barrioId);
+  if (filters.search) params.append("search", filters.search);
   const query = params.toString();
   return recovenApi.get(`/recyclers${query ? `?${query}` : ""}`, true);
-}
-
-export interface RecyclerKpis {
-  total: number;
-  censados: number;
-  sinCensar: number;
-  desvinculados: number;
-}
-
-/**
- * Conteos para las tarjetas KPI del panel — un endpoint dedicado, en vez
- * de traer la lista completa de recicladores dos veces (como se hacía
- * antes) solo para contarlos. Mucho más liviano: no trae barrios ni
- * microrrutas anidados, solo números.
- *
- * Controller: GET /recyclers/kpis  (JwtAuthGuard)
- */
-export async function obtenerKpisRecyclers(): Promise<RecyclerKpis> {
-  return recovenApi.get("/recyclers/kpis", true);
 }
 
 /**
@@ -102,6 +84,22 @@ export async function desvincularRecycler(id: number): Promise<void> {
  */
 export async function reactivarRecycler(id: number): Promise<Recycler> {
   return recovenApi.patch(`/recyclers/${id}/reactivar`, {}, true);
+}
+
+/**
+ * Asigna una microrruta a un reciclador — a diferencia de updateRecycler,
+ * no reemplaza la lista completa de rutas del reciclador (que requeriría
+ * conocerla entera de antemano), solo agrega esta una sin tocar las
+ * demás. Se usa en el flujo de "¿asignar un trabajador?" justo después de
+ * crear una microrruta nueva.
+ *
+ * Controller: PATCH /recyclers/:id/asignar-microrruta  (JwtAuthGuard)
+ */
+export async function asignarMicrorrutaARecycler(
+  recyclerId: number,
+  microrrutaId: number
+): Promise<void> {
+  await recovenApi.patch(`/recyclers/${recyclerId}/asignar-microrruta`, { microrrutaId }, true);
 }
 
 /**
