@@ -1,6 +1,6 @@
 // lib/microrrutaReportePdf.ts
 
-import { jsPDF } from "jspdf";
+import { jsPDF, GState } from "jspdf";
 import OLMap from "ol/Map";
 import View from "ol/View";
 import VectorLayer from "ol/layer/Vector";
@@ -40,13 +40,23 @@ const ID_MICRORRUTA_FIJO = "51406";
 // Color de la ruta (rojo)
 const COLOR_RUTA = "#dc2626";
 
+// Altura fija del mapa localizador (mm)
+const ALTO_LOCALIZADOR = 50;
+
+// Alturas fijas para leyenda y escala
+const ALTO_LEYENDA = 30;
+const ALTO_ESCALA = 18;
+
+// Gap general entre bloques
+const GAP = 2;
+
 interface CacheReporte {
   recyclers?: Recycler[];
   localidadesGeoJson?: GeoJsonFeatureCollection<LocalidadProperties> | null;
   logoInfo?: { dataUrl: string; width: number; height: number } | null;
   localizadores: Map<string, string>;
   contextosGeograficos: Map<
-    string,
+    string, // clave = localidadCod
     {
       barriosGeoJson: GeoJsonFeatureCollection<BarrioProperties> | null;
       viasGeoJson: GeoJsonFeatureCollection<ViaProperties> | null;
@@ -98,6 +108,7 @@ function crearCacheReporte(): CacheReporte {
 async function obtenerRecyclersCache(cache: CacheReporte): Promise<Recycler[]> {
   if (cache.recyclers === undefined) {
     try {
+      // Cargar solo los recicladores necesarios filtrando por ruta más adelante
       cache.recyclers = await getRecyclers({});
     } catch (error) {
       console.error("Error cargando recicladores para el reporte:", error);
@@ -133,26 +144,25 @@ interface UbicacionDesdeMicrorruta {
   barrioCod: string | null;
   barrioNombre: string;
   localidadCod: string | null;
-  localidadNombre: string | null;
+  localidadNombre: string;
 }
 
 function resolverUbicacionDesdeMicrorruta(mr: MicrorrutaProperties): UbicacionDesdeMicrorruta {
   if (mr.barrios.length === 0) {
-    return { barrioCod: null, barrioNombre: "", localidadCod: null, localidadNombre: null };
+    return { barrioCod: null, barrioNombre: "", localidadCod: null, localidadNombre: "" };
   }
+  // Para mostrar todas las localidades en el campo LOCALIDAD
+  const localidadesUnicas = [...new Set(mr.barrios.map((b) => b.localidadNombre).filter(Boolean))];
   return {
     barrioCod: mr.barrios[0].barrioCod,
     barrioNombre: mr.barrios.map((b) => b.barrioNombre).join(", "),
     localidadCod: mr.barrios[0].localidadCod,
-    localidadNombre: mr.barrios[0].localidadNombre,
+    localidadNombre: localidadesUnicas.join(", "),
   };
 }
 
-async function obtenerContextoGeografico(
-  localidadCod: string | null,
-  barrioCod: string | null,
-  cache: CacheReporte
-) {
+// Obtiene el contexto geográfico de UNA localidad (todos sus barrios y vías)
+async function obtenerContextoGeografico(localidadCod: string, cache: CacheReporte) {
   if (!localidadCod) {
     return {
       barriosGeoJson: null as GeoJsonFeatureCollection<BarrioProperties> | null,
@@ -160,24 +170,38 @@ async function obtenerContextoGeografico(
     };
   }
 
-  const clave = `${localidadCod}|${barrioCod ?? ""}`;
+  const clave = localidadCod;
   const enCache = cache.contextosGeograficos.get(clave);
   if (enCache) return enCache;
 
   try {
     const [barriosGeoJson, viasGeoJson] = await Promise.all([
       getBarriosGeoJson({ localidadCod }),
-      getViasGeoJson({ localidadCod, barrioCod: barrioCod ?? undefined }),
+      getViasGeoJson({ localidadCod }), // sin filtrar por barrio, trae todas las vías de la localidad
     ]);
     const resultado = { barriosGeoJson, viasGeoJson };
     cache.contextosGeograficos.set(clave, resultado);
     return resultado;
   } catch (error) {
-    console.error("Error cargando barrios/vías para el reporte:", error);
+    console.error(`Error cargando barrios/vías para localidad ${localidadCod}:`, error);
     const resultado = { barriosGeoJson: null, viasGeoJson: null };
     cache.contextosGeograficos.set(clave, resultado);
     return resultado;
   }
+}
+
+// Helper para combinar dos FeatureCollections en una sola
+function combinarFeatureCollections<T>(
+  a: GeoJsonFeatureCollection<T> | null,
+  b: GeoJsonFeatureCollection<T> | null
+): GeoJsonFeatureCollection<T> | null {
+  if (!a && !b) return null;
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    type: "FeatureCollection",
+    features: [...a.features, ...b.features],
+  };
 }
 
 // Estilo de ruta: línea roja más gruesa (5px) y flechas más grandes (radio 9)
@@ -245,10 +269,6 @@ async function renderizarMapaImpresion(
   widthPx: number,
   heightPx: number,
   anchoImpresoMm: number,
-  // Códigos de los barrios que la microrruta realmente tiene asignados
-  // (microrruta.barrios) — barriosGeoJson trae TODOS los barrios de la
-  // localidad completa (es contexto de toda la zona), así que sin esto no
-  // hay forma de saber cuál de ellos es el que hay que resaltar.
   barriosCodDeLaRuta: Set<string>
 ): Promise<ResultadoMapaImpresion> {
   const container = document.createElement("div");
@@ -262,11 +282,6 @@ async function renderizarMapaImpresion(
   try {
     const geoJsonFormat = new GeoJSON({ dataProjection: DATA_PROJ, featureProjection: VIEW_PROJ });
 
-    // Solo el/los barrio(s) de la propia microrruta se pintan con el
-    // relleno verde fuerte y llevan la etiqueta de nombre — el resto de
-    // barrios de la localidad (contexto, no relacionados con esta ruta)
-    // quedan con un contorno gris tenue, sin relleno ni etiqueta, para no
-    // competir visualmente ni sugerir que también les pertenece la ruta.
     const barriosLayer = new VectorLayer({
       source: new VectorSource({
         features: barriosGeoJson ? geoJsonFormat.readFeatures(barriosGeoJson) : [],
@@ -275,24 +290,25 @@ async function renderizarMapaImpresion(
         const identificador = String(feature.get("identificador") ?? "");
         const esBarrioDeLaRuta = barriosCodDeLaRuta.has(identificador);
 
-        return new Style({
-          stroke: new Stroke({
-            color: esBarrioDeLaRuta ? "#2e7d32" : "#9ca3af",
-            width: esBarrioDeLaRuta ? 1.2 : 0.4,
-          }),
-          fill: new Fill({
-            color: esBarrioDeLaRuta ? "rgba(34, 197, 94, 0.25)" : "rgba(200, 200, 200, 0.08)",
-          }),
-          text: esBarrioDeLaRuta
-            ? new TextStyle({
-                text: String(feature.get("nombre") ?? ""),
-                font: "bold 11px sans-serif",
-                fill: new Fill({ color: "#9a3324" }),
-                stroke: new Stroke({ color: "#ffffff", width: 3 }),
-                overflow: true,
-              })
-            : undefined,
-        });
+        if (esBarrioDeLaRuta) {
+          return new Style({
+            stroke: new Stroke({ color: "#2e7d32", width: 1.2 }),
+            fill: new Fill({ color: "rgba(34, 197, 94, 0.15)" }),
+            text: new TextStyle({
+              text: String(feature.get("nombre") ?? ""),
+              font: "bold 11px sans-serif",
+              fill: new Fill({ color: "#ffffff" }),
+              stroke: new Stroke({ color: "#2e7d32", width: 3 }),
+              overflow: true,
+            }),
+          });
+        } else {
+          return new Style({
+            stroke: new Stroke({ color: "#9ca3af", width: 0.4 }),
+            fill: new Fill({ color: "rgba(200, 200, 200, 0.08)" }),
+            text: undefined,
+          });
+        }
       },
     });
 
@@ -560,44 +576,73 @@ interface FilaInfo {
   valor: string;
 }
 
+// Tabla con altura fija: ajusta fuente e interlineado para que quepa todo el contenido
 function dibujarTablaInfo(
   pdf: jsPDF,
   x: number,
   y: number,
   width: number,
   filas: FilaInfo[],
+  alturaMaxima: number,
   nombreMicrorruta?: string
 ): number {
-  const alturaFila = 5.5;
-  const paddingSuperior = 5.5;
-  const alturaTotal = filas.length * alturaFila + paddingSuperior;
+  const paddingSuperior = 2.5;
+  const paddingInferior = nombreMicrorruta ? 9 : 2;
+  const anchoEtiqueta = width * 0.34;
+  const anchoValor = width - anchoEtiqueta - 6;
+
+  // Calcular el número total de líneas necesarias
+  let totalLines = 0;
+  const linesPorFila: string[][] = [];
+  for (const fila of filas) {
+    const valorMayus = (fila.valor || "—").toUpperCase();
+    const lines = pdf.splitTextToSize(valorMayus, anchoValor);
+    linesPorFila.push(lines);
+    totalLines += lines.length;
+  }
+
+  // Espacio disponible para las líneas
+  const espacioDisponible = alturaMaxima - paddingSuperior - paddingInferior;
+  const alturaLinea = Math.max(espacioDisponible / totalLines, 2.8);
+  const fontSize = Math.min(Math.max(alturaLinea * 2.2, 5), 8);
+  const fontSizeEtiqueta = Math.min(fontSize + 0.5, 8.5);
+
+  // Dibujar rectángulo con altura fija
   pdf.setDrawColor("#000000");
   pdf.setLineWidth(0.3);
-  pdf.rect(x, y, width, alturaTotal);
+  pdf.rect(x, y, width, alturaMaxima);
 
-  const anchoEtiqueta = width * 0.34;
+  // Dibujar filas
   let filaY = y + paddingSuperior;
-  pdf.setFontSize(8.5);
-  filas.forEach((fila) => {
+  for (let i = 0; i < filas.length; i++) {
+    const lines = linesPorFila[i];
+    const etiqueta = filas[i].etiqueta;
+
+    const etiquetaY = filaY + alturaLinea * 0.6;
     pdf.setFont("helvetica", "bold");
-    pdf.text(fila.etiqueta, x + 3, filaY);
+    pdf.setFontSize(fontSizeEtiqueta);
+    pdf.text(etiqueta, x + 3, etiquetaY);
+
     pdf.setFont("helvetica", "normal");
-    pdf.text((fila.valor || "—").toUpperCase(), x + 3 + anchoEtiqueta, filaY, {
-      maxWidth: width - anchoEtiqueta - 6,
-    });
-    filaY += alturaFila;
-  });
+    pdf.setFontSize(fontSize);
+    let lineY = filaY + alturaLinea * 0.6;
+    for (const line of lines) {
+      pdf.text(line, x + 3 + anchoEtiqueta, lineY, { maxWidth: anchoValor });
+      lineY += alturaLinea;
+    }
+    filaY += lines.length * alturaLinea + 1.0;
+  }
 
   if (nombreMicrorruta) {
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
-    pdf.text(nombreMicrorruta, x + width - 3, y + alturaTotal - 2, {
+    pdf.setFontSize(7.5);
+    pdf.text(nombreMicrorruta, x + width - 3, y + alturaMaxima - 2, {
       align: "right",
       maxWidth: width - 6,
     });
   }
 
-  return y + alturaTotal;
+  return y + alturaMaxima;
 }
 
 function dibujarLeyenda(pdf: jsPDF, x: number, y: number, width: number): number {
@@ -605,12 +650,12 @@ function dibujarLeyenda(pdf: jsPDF, x: number, y: number, width: number): number
   const gapIconoTexto = 6;
 
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(9);
-  pdf.text("Leyenda", centerX, y + 5, { align: "center" });
+  pdf.setFontSize(8.5);
+  pdf.text("Leyenda", centerX, y + 4, { align: "center" });
 
-  let filaY = y + 13;
+  let filaY = y + 10;
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8);
+  pdf.setFontSize(7);
   pdf.setTextColor(0);
 
   const elementos: Array<{
@@ -619,14 +664,13 @@ function dibujarLeyenda(pdf: jsPDF, x: number, y: number, width: number): number
   }> = [
     {
       dibujarIcono: (cx, cy) => {
-        // Ruta en rojo
-        const colorRuta = [220, 38, 38]; // #dc2626
+        const colorRuta = [220, 38, 38];
         pdf.setDrawColor(colorRuta[0], colorRuta[1], colorRuta[2]);
-        pdf.setLineWidth(2);
-        pdf.line(cx - 6, cy, cx + 6, cy);
+        pdf.setLineWidth(1.3);
+        pdf.line(cx - 5, cy, cx + 5, cy);
         pdf.setFillColor(colorRuta[0], colorRuta[1], colorRuta[2]);
-        pdf.triangle(cx - 6, cy, cx - 2, cy - 4, cx - 2, cy + 4, "F");
-        pdf.triangle(cx + 6, cy, cx + 2, cy - 4, cx + 2, cy + 4, "F");
+        pdf.triangle(cx - 6, cy, cx - 4, cy - 2.5, cx - 4, cy + 2.5, "F");
+        pdf.triangle(cx + 6, cy, cx + 4, cy - 2.5, cx + 4, cy + 2.5, "F");
       },
       etiqueta: "Ruta",
     },
@@ -640,10 +684,13 @@ function dibujarLeyenda(pdf: jsPDF, x: number, y: number, width: number): number
     },
     {
       dibujarIcono: (cx, cy) => {
+        const colorVerde = [34, 197, 94];
         pdf.setDrawColor("#2e7d32");
         pdf.setLineWidth(0.8);
-        pdf.setFillColor(34, 197, 94, 0.25);
+        pdf.setGState(new GState({ opacity: 0.15 }));
+        pdf.setFillColor(colorVerde[0], colorVerde[1], colorVerde[2]);
         pdf.rect(cx - 6, cy - 3.5, 12, 5, "FD");
+        pdf.setGState(new GState({ opacity: 1 }));
       },
       etiqueta: "Barrio",
     },
@@ -659,7 +706,7 @@ function dibujarLeyenda(pdf: jsPDF, x: number, y: number, width: number): number
     el.dibujarIcono(iconoCenterX, filaY);
 
     const textoX = inicioBloque + anchoIcono + gapIconoTexto;
-    pdf.text(el.etiqueta, textoX, filaY + 1);
+    pdf.text(el.etiqueta, textoX, filaY + 0.5);
 
     filaY += 8;
   });
@@ -692,20 +739,20 @@ function dibujarEscala(
 
   const usaKm = totalM >= 1000;
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(6.5);
+  pdf.setFontSize(6);
   pdf.setTextColor(0);
 
   for (let i = 0; i <= pasos; i++) {
     const valor = (totalM / pasos) * i * (usaKm ? 1 / 1000 : 1);
     const etiqueta = usaKm ? valor.toFixed(2) : Math.round(valor).toString();
     const posX = inicioBarra + (anchoBarraMm / pasos) * i;
-    pdf.text(etiqueta, posX, y + alturaBarra + 4, { align: "center" });
+    pdf.text(etiqueta, posX, y + alturaBarra + 3, { align: "center" });
   }
 
   const unidad = usaKm ? "Kilómetros" : "Metros";
-  pdf.text(unidad, centroX, y + alturaBarra + 9, { align: "center" });
+  pdf.text(unidad, centroX, y + alturaBarra + 8, { align: "center" });
 
-  return y + alturaBarra + 13;
+  return y + alturaBarra + 12;
 }
 
 async function dibujarPaginaReporte(
@@ -717,31 +764,45 @@ async function dibujarPaginaReporte(
   const reciclador = await resolverReciclador(microrruta.id, cache);
   const ubicacion = resolverUbicacionDesdeMicrorruta(microrruta);
 
-  const { barriosGeoJson, viasGeoJson } = await obtenerContextoGeografico(
-    ubicacion.localidadCod,
-    ubicacion.barrioCod,
-    cache
-  );
+  // ----- OBTENER TODAS LAS LOCALIDADES DE LA RUTA -----
+  const localidadesSet = new Set<string>();
+  microrruta.barrios.forEach((b) => {
+    if (b.localidadCod) localidadesSet.add(b.localidadCod);
+  });
+
+  let barriosGeoJsonCombined: GeoJsonFeatureCollection<BarrioProperties> | null = null;
+  let viasGeoJsonCombined: GeoJsonFeatureCollection<ViaProperties> | null = null;
+
+  for (const locCod of localidadesSet) {
+    const ctx = await obtenerContextoGeografico(locCod, cache);
+    barriosGeoJsonCombined = combinarFeatureCollections(barriosGeoJsonCombined, ctx.barriosGeoJson);
+    viasGeoJsonCombined = combinarFeatureCollections(viasGeoJsonCombined, ctx.viasGeoJson);
+  }
+
+  // Si no hay localidades, usar null
+  const barriosGeoJson = barriosGeoJsonCombined;
+  const viasGeoJson = viasGeoJsonCombined;
+
   const localidadesGeoJson = await obtenerLocalidadesGeoJsonCache(cache);
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margen = 8;
-  const gap = 3;
 
-  const anchoMapa = (pageWidth - margen * 2) * 0.68 - gap / 2;
+  // Mapa grande (izquierda) ocupa toda la altura
+  const anchoMapa = (pageWidth - margen * 2) * 0.68 - GAP / 2;
   const altoMapa = pageHeight - margen * 2;
-  const colDerechaX = margen + anchoMapa + gap;
+  const colDerechaX = margen + anchoMapa + GAP;
   const colDerechaAncho = pageWidth - margen - colDerechaX;
+
+  // Mapa localizador (abajo a la derecha) con altura fija
+  const yLocalizador = pageHeight - margen - ALTO_LOCALIZADOR;
+  const anchoLocalizador = colDerechaAncho;
 
   const DPI = 150;
   const widthPx = Math.round((anchoMapa / 25.4) * DPI);
   const heightPx = Math.round((altoMapa / 25.4) * DPI);
 
-  // Los códigos de barrio que la propia microrruta trae asignados —
-  // MicrorrutaBarrio, calculado y guardado por el backend — son los
-  // únicos que deben resaltarse dentro de barriosGeoJson (que trae toda
-  // la localidad como contexto).
   const barriosCodDeLaRuta = new Set(microrruta.barrios.map((b) => b.barrioCod));
 
   const { dataUrl: mapaDataUrl, metrosPorMm } = await renderizarMapaImpresion(
@@ -767,7 +828,10 @@ async function dibujarPaginaReporte(
 
   let cursorY = margen;
   const logoInfo = await obtenerLogoCache(cache);
-  cursorY = dibujarEncabezado(pdf, colDerechaX, cursorY, colDerechaAncho, logoInfo) + gap;
+  cursorY = dibujarEncabezado(pdf, colDerechaX, cursorY, colDerechaAncho, logoInfo) + GAP;
+
+  const espacioTotal = yLocalizador - cursorY - GAP;
+  const alturaTabla = espacioTotal - ALTO_LEYENDA - ALTO_ESCALA - GAP * 2;
 
   cursorY =
     dibujarTablaInfo(
@@ -781,22 +845,22 @@ async function dibujarPaginaReporte(
         { etiqueta: "NUMACRO", valor: String(microrruta.id) },
         { etiqueta: "HORARIO", valor: formatearHorario(microrruta) },
         { etiqueta: "BARRIO", valor: ubicacion.barrioNombre },
-        { etiqueta: "LOCALIDAD", valor: ubicacion.localidadNombre ?? "" },
+        { etiqueta: "LOCALIDAD", valor: ubicacion.localidadNombre },
         { etiqueta: "DISTANCIA", valor: distanciaTexto },
         { etiqueta: "INICIO", valor: microrruta.dirInicio ?? "" },
         { etiqueta: "FIN", valor: microrruta.dirFin ?? "" },
       ],
+      alturaTabla,
       microrruta.nombre
-    ) + gap;
+    ) + GAP;
 
-  cursorY = dibujarLeyenda(pdf, colDerechaX, cursorY, colDerechaAncho) + gap;
-  cursorY = dibujarEscala(pdf, colDerechaX, cursorY, colDerechaAncho, metrosPorMm) + gap;
+  cursorY = dibujarLeyenda(pdf, colDerechaX, cursorY, colDerechaAncho) + GAP;
+  dibujarEscala(pdf, colDerechaX, cursorY, colDerechaAncho, metrosPorMm);
 
-  const altoLocalizador = margen + altoMapa - cursorY;
-  const anchoLocalizador = colDerechaAncho;
+  // Localizador
   const dpiLoc = 150;
   const widthPxLoc = Math.round((anchoLocalizador / 25.4) * dpiLoc);
-  const heightPxLoc = Math.round((altoLocalizador / 25.4) * dpiLoc);
+  const heightPxLoc = Math.round((ALTO_LOCALIZADOR / 25.4) * dpiLoc);
 
   try {
     const claveLocalizador = `${ubicacion.localidadCod ?? "sin-localidad"}|${widthPxLoc}x${heightPxLoc}`;
@@ -814,25 +878,25 @@ async function dibujarPaginaReporte(
       localizadorDataUrl,
       "JPEG",
       colDerechaX,
-      cursorY,
+      yLocalizador,
       anchoLocalizador,
-      altoLocalizador
+      ALTO_LOCALIZADOR
     );
     pdf.setDrawColor("#000000");
     pdf.setLineWidth(0.3);
-    pdf.rect(colDerechaX, cursorY, anchoLocalizador, altoLocalizador);
+    pdf.rect(colDerechaX, yLocalizador, anchoLocalizador, ALTO_LOCALIZADOR);
   } catch (error) {
     console.error("Error generando mapa localizador:", error);
     pdf.setDrawColor("#000000");
     pdf.setLineWidth(0.3);
-    pdf.rect(colDerechaX, cursorY, anchoLocalizador, altoLocalizador);
+    pdf.rect(colDerechaX, yLocalizador, anchoLocalizador, ALTO_LOCALIZADOR);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8);
     pdf.setTextColor(150);
     pdf.text(
       "Localizador no disponible",
       colDerechaX + anchoLocalizador / 2,
-      cursorY + altoLocalizador / 2,
+      yLocalizador + ALTO_LOCALIZADOR / 2,
       { align: "center" }
     );
   }
@@ -864,13 +928,22 @@ export async function generarReporteMicrorrutas(
 ): Promise<void> {
   if (rutas.length === 0) return;
 
+  const rutasOrdenadas = [...rutas].sort((a, b) =>
+    a.microrruta.nombre.localeCompare(b.microrruta.nombre, "es", { sensitivity: "base" })
+  );
+
   const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const cache = crearCacheReporte();
 
-  for (let i = 0; i < rutas.length; i++) {
+  for (let i = 0; i < rutasOrdenadas.length; i++) {
     if (i > 0) pdf.addPage();
-    await dibujarPaginaReporte(pdf, rutas[i].microrruta, rutas[i].geometry, cache);
-    onProgreso?.(i + 1, rutas.length);
+    await dibujarPaginaReporte(
+      pdf,
+      rutasOrdenadas[i].microrruta,
+      rutasOrdenadas[i].geometry,
+      cache
+    );
+    onProgreso?.(i + 1, rutasOrdenadas.length);
   }
 
   const fecha = new Date().toISOString().split("T")[0];

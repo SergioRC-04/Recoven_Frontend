@@ -1,6 +1,6 @@
 Mejorar estructura dle proyecto, considerar organizarlo por secciones primarias
 
-----------------------------------------------
+Arreglar responsive del admin.
 
 Se puede colocar una animacion en el carusel de clientes que indique el componente se puede arrastrar.
 se pueden colocar logos reales en el carrusel de clientes
