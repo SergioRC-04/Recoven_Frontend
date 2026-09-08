@@ -231,6 +231,16 @@ export interface MicrorrutaProperties {
   // uno por uno vía GET /microrrutas/:id/ubicacion; ese endpoint ya no
   // existe).
   barrios: BarrioDeMicrorruta[];
+  // Número de macrorruta (8 dígitos) de la localidad donde la ruta cubre
+  // la MAYOR parte de su trazo — calculado geométricamente por el
+  // backend (ver microrrutas-barrios.util.ts), no editable a mano. null
+  // si todavía no se ha calculado o la ruta no tiene ningún barrio
+  // asignado.
+  macrorrutaNumero: string | null;
+  // Nombre de esa localidad dominante — se muestra junto al número en la
+  // tabla/reporte; viaja aparte porque el backend ya la resuelve en la
+  // misma consulta, sin necesidad de una búsqueda aparte en el frontend.
+  localidadDominanteNombre: string | null;
 }
 
 // ============================================================
@@ -251,6 +261,7 @@ export interface MicrorrutaProperties {
 //   "dist_pavimentada":0.5,"dist_no_pavimentada":0,
 //   "frecuencia":4,"dias_frecuencia":"1-3-5",
 //   "estacion_transferencia":2,"tipo_barrido":1,"estado":"BORRADOR",
+//   "macrorruta_numero":"10000003","localidad_dominante_nombre":"Suroccidente",
 //   "geojson":{"type":"LineString","coordinates":[[lon,lat],[lon,lat]]},
 //   "longitud_calculada_km":"0.29",
 //   "barrios":[{"barrioCod":"...","barrioNombre":"...","localidadCod":"...","localidadNombre":"..."}]}]
@@ -282,6 +293,8 @@ export interface MicrorrutaApiItem {
   geojson: LineStringGeoJson | null;
   longitud_calculada_km: string | number | null;
   barrios: BarrioDeMicrorruta[];
+  macrorruta_numero: string | null;
+  localidad_dominante_nombre: string | null;
 }
 
 // Reutilizamos los genéricos de geo.ts para evitar duplicar la estructura
@@ -296,7 +309,33 @@ export type MicrorrutasGeoJson = GeoJsonFeatureCollection<MicrorrutaProperties>;
 export interface MicrorrutasFilters {
   localidadCod?: string;
   barrioCod?: string;
+  // Número de macrorruta (8 dígitos) — filtra a las rutas cuya localidad
+  // dominante (ver MicrorrutaProperties.macrorrutaNumero) sea esa. Es una
+  // dimensión de filtro distinta a localidadCod: esa filtra por barrio
+  // tocado; esta filtra por dónde cae la MAYOR parte del trazo.
+  macrorrutaNumero?: string;
 }
+
+// Una fila del selector de macrorrutas del admin — solo las que
+// realmente tienen alguna microrruta asignada ahora mismo (ver
+// obtenerMacrorrutas() en el backend).
+export interface MacrorrutaResumen {
+  numero: string;
+  localidadCod: string;
+  localidadNombre: string;
+  total: number;
+}
+
+// Propiedades de cada feature del GeoJSON de GET /microrrutas/macrorrutas/mapa
+// — una localidad con macrorruta activa, con la geometría de la propia
+// localidad (no se guarda ninguna geometría aparte por macrorruta).
+export interface MacrorrutaMapaProperties {
+  identificador: string;
+  nombre: string;
+  macrorrutaNumero: string;
+}
+
+export type MacrorrutasMapaGeoJson = GeoJsonFeatureCollection<MacrorrutaMapaProperties>;
 
 // ============================================================
 // FORMULARIO / PAYLOADS

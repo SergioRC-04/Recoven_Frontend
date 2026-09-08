@@ -8,4 +8,6 @@ arreglar grafias cuando hay mas de 6 meses
 
 revisar politica de tratamiento de datos
 
+no sirve el reenviar correo
+
 Hacer testeo

@@ -9,6 +9,8 @@ import type {
   MicrorrutaGeometriaPayload,
   MicrorrutaProperties,
   MicrorrutaApiItem,
+  MacrorrutaResumen,
+  MacrorrutasMapaGeoJson,
 } from "../types/microrruta";
 
 // ============================================================
@@ -35,6 +37,7 @@ export async function getMicrorrutas(filters?: MicrorrutasFilters): Promise<Micr
   const params = new URLSearchParams();
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   const query = params.toString();
   const raw = await recovenApi.get<unknown>(`/microrrutas${query ? `?${query}` : ""}`, false);
   return normalizeMicrorrutasGeoJson(raw);
@@ -102,6 +105,8 @@ function toMicrorrutaFeature(item: MicrorrutaApiItem): MicrorrutaFeature | null 
     // Ya viene en camelCase desde el backend (json_build_object en la
     // consulta) — no hace falta transformar nada aquí.
     barrios: item.barrios ?? [],
+    macrorrutaNumero: item.macrorruta_numero ?? null,
+    localidadDominanteNombre: item.localidad_dominante_nombre ?? null,
   };
 
   return {
@@ -119,6 +124,35 @@ function toMicrorrutaFeature(item: MicrorrutaApiItem): MicrorrutaFeature | null 
 export async function getMicrorrutasList(): Promise<{ id: number; nombre: string }[]> {
   const geojson = await getMicrorrutas();
   return geojson.features.map((f) => ({ id: f.properties.id, nombre: f.properties.nombre }));
+}
+
+/**
+ * Lista de macrorrutas para el select de filtro del admin — solo las que
+ * de verdad tienen alguna microrruta asignada ahora mismo.
+ *
+ * Controller: GET /microrrutas/macrorrutas  (sin guard)
+ */
+export async function getMacrorrutas(): Promise<MacrorrutaResumen[]> {
+  const raw = await recovenApi.get<
+    Array<{ numero: string; localidad_cod: string; localidad_nombre: string; total: number }>
+  >("/microrrutas/macrorrutas", false);
+  return raw.map((m) => ({
+    numero: m.numero,
+    localidadCod: m.localidad_cod,
+    localidadNombre: m.localidad_nombre,
+    total: m.total,
+  }));
+}
+
+/**
+ * GeoJSON de las localidades con macrorruta activa — cada feature trae su
+ * nombre y su número de macrorruta como propiedades, para el reporte en
+ * mapa de macrorrutas (ver lib/microrrutaReportePdf.ts).
+ *
+ * Controller: GET /microrrutas/macrorrutas/mapa  (sin guard)
+ */
+export async function getMacrorrutasGeoJson(): Promise<MacrorrutasMapaGeoJson> {
+  return recovenApi.get("/microrrutas/macrorrutas/mapa", false);
 }
 
 // ============================================================
@@ -193,6 +227,7 @@ export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Pr
   const params = new URLSearchParams();
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
 }
@@ -211,5 +246,6 @@ export async function exportarMicrorrutasCapa(
   const params = new URLSearchParams({ formato });
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
 }

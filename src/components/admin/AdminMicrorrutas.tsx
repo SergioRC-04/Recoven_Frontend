@@ -8,12 +8,14 @@ import {
   FaFileExcel,
   FaLayerGroup,
   FaSpinner,
+  FaMap,
 } from "react-icons/fa";
 import { getLocalidadesList, getBarriosGeoJson, getViasGeoJson } from "../../services/geo";
 import {
   getMicrorrutas,
   deleteMicrorruta,
   exportarMicrorrutasExcel,
+  getMacrorrutas,
 } from "../../services/microrutas";
 import { getRecyclers } from "../../services/recyclers";
 import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
@@ -30,6 +32,7 @@ import {
   type MicrorrutasGeoJson,
   type MicrorrutaProperties,
   type LineStringGeoJson,
+  type MacrorrutaResumen,
 } from "../../types/microrruta";
 import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
 import MicrorrutasTable from "./MicrorrutasTable";
@@ -40,6 +43,7 @@ import {
   generarReporteMicrorruta,
   generarReporteMicrorrutas,
 } from "../../lib/microrrutaReportePdf";
+import { generarReporteMacrorrutas } from "../../lib/macrorrutaReportePdf";
 
 type FormModalState =
   | { mode: "create"; geojson: LineStringGeoJson; distanciaTotalKm: number }
@@ -49,7 +53,12 @@ type FormModalState =
 export default function AdminMicrorrutas() {
   const [selectedLocalidad, setSelectedLocalidad] = useState("");
   const [selectedBarrio, setSelectedBarrio] = useState("");
+  // Independiente de localidad/barrio: filtra por en qué localidad cae la
+  // MAYOR parte del trazo de cada ruta (ver macrorrutaNumero en
+  // types/microrruta.ts), no por qué barrios toca.
+  const [selectedMacrorruta, setSelectedMacrorruta] = useState("");
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
+  const [macrorrutas, setMacrorrutas] = useState<MacrorrutaResumen[]>([]);
 
   // GeoJSON de todos los barrios (carga única al montar)
   const [todosLosBarriosGeo, setTodosLosBarriosGeo] =
@@ -70,6 +79,7 @@ export default function AdminMicrorrutas() {
     null
   );
   const [descargandoExcel, setDescargandoExcel] = useState(false);
+  const [generandoMapaMacrorrutas, setGenerandoMapaMacrorrutas] = useState(false);
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
   // Microrruta recién creada, en espera de que el usuario elija (o no) un
@@ -96,6 +106,16 @@ export default function AdminMicrorrutas() {
       .then(setLocalidades)
       .catch((err) => console.error("Error cargando localidades:", err));
   }, []);
+
+  // Lista de macrorrutas para el select de filtro — se refresca con
+  // refreshKey para que una macrorruta recién creada (al crear la
+  // primera microrruta de una localidad) aparezca sin recargar la
+  // página.
+  useEffect(() => {
+    getMacrorrutas()
+      .then(setMacrorrutas)
+      .catch((err) => console.error("Error cargando macrorrutas:", err));
+  }, [refreshKey]);
 
   // Recicladores — alimentan la columna "Trabajador" de la tabla Y la
   // lista de opciones de AsignarTrabajadorModal. refreshKey en las
@@ -182,6 +202,7 @@ export default function AdminMicrorrutas() {
     getMicrorrutas({
       localidadCod: selectedLocalidad || undefined,
       barrioCod: selectedBarrio || undefined,
+      macrorrutaNumero: selectedMacrorruta || undefined,
     })
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
@@ -196,7 +217,7 @@ export default function AdminMicrorrutas() {
     return () => {
       setMicrorrutasGeo(null);
     };
-  }, [selectedLocalidad, selectedBarrio, refreshKey]);
+  }, [selectedLocalidad, selectedBarrio, selectedMacrorruta, refreshKey]);
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
@@ -302,6 +323,7 @@ export default function AdminMicrorrutas() {
       const blob = await exportarMicrorrutasExcel({
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
+        macrorrutaNumero: selectedMacrorruta || undefined,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -316,6 +338,18 @@ export default function AdminMicrorrutas() {
       alert("No se pudo descargar el archivo Excel.");
     } finally {
       setDescargandoExcel(false);
+    }
+  };
+
+  const handleGenerarMapaMacrorrutas = async () => {
+    setGenerandoMapaMacrorrutas(true);
+    try {
+      await generarReporteMacrorrutas();
+    } catch (error) {
+      console.error("Error generando el mapa de macrorrutas:", error);
+      alert("No se pudo generar el mapa de macrorrutas.");
+    } finally {
+      setGenerandoMapaMacrorrutas(false);
     }
   };
 
@@ -354,6 +388,16 @@ export default function AdminMicrorrutas() {
           >
             {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
             Generar Informe SUI Microrrutas ({microrrutasList.length})
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerarMapaMacrorrutas}
+            disabled={isBusy || generandoMapaMacrorrutas}
+            title="Mapa con la división por macrorrutas (localidades con al menos una microrruta)"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {generandoMapaMacrorrutas ? <FaSpinner className="animate-spin" /> : <FaMap />}
+            Mapa de Macrorrutas
           </button>
         </div>
       </div>
@@ -399,13 +443,33 @@ export default function AdminMicrorrutas() {
           </select>
         </div>
 
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Macrorruta
+          </label>
+          <select
+            value={selectedMacrorruta}
+            disabled={isBusy || macrorrutas.length === 0}
+            onChange={(e) => setSelectedMacrorruta(e.target.value)}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+          >
+            <option value="">Todas</option>
+            {macrorrutas.map((mac) => (
+              <option key={mac.numero} value={mac.numero}>
+                {mac.numero} — {mac.localidadNombre} ({mac.total})
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           type="button"
           onClick={() => {
             setSelectedLocalidad("");
             setSelectedBarrio("");
+            setSelectedMacrorruta("");
           }}
-          disabled={isBusy || (!selectedLocalidad && !selectedBarrio)}
+          disabled={isBusy || (!selectedLocalidad && !selectedBarrio && !selectedMacrorruta)}
           className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FaEraser /> Limpiar filtros
@@ -496,6 +560,7 @@ export default function AdminMicrorrutas() {
           filtros={{
             localidadCod: selectedLocalidad || undefined,
             barrioCod: selectedBarrio || undefined,
+            macrorrutaNumero: selectedMacrorruta || undefined,
           }}
           onClose={() => setMostrarExportarCapas(false)}
         />
