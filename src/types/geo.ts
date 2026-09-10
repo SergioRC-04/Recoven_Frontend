@@ -54,6 +54,15 @@ export interface GeoJsonFeatureCollection<Props = Record<string, unknown>> {
 }
 
 // ============================================================
+// MUNICIPIO — Barranquilla o Puerto Colombia
+// ============================================================
+
+// Puerto Colombia hoy es UNA sola fila de Localidades (identificador
+// "PC-000") cubriendo todo el municipio, no subdividida en corregimientos
+// — temporal, ver el comentario en schema.prisma junto al enum Municipio.
+export type Municipio = "BARRANQUILLA" | "PUERTO_COLOMBIA";
+
+// ============================================================
 // PROPIEDADES ESPECÍFICAS PARA CADA CAPA
 // ============================================================
 
@@ -62,6 +71,7 @@ export interface LocalidadProperties {
   identificador: string;
   nombre: string;
   areaShape?: number;
+  municipio: Municipio;
 }
 
 export interface BarrioProperties {
@@ -84,13 +94,21 @@ export interface ViaProperties {
 // FILTROS PARA ENDPOINTS
 // ============================================================
 
+export interface LocalidadesFilters {
+  municipio?: Municipio;
+}
+
 export interface BarriosFilters {
   localidadCod?: string;
+  // Independiente de localidadCod — "todos los barrios de Puerto
+  // Colombia" sin elegir una localidad puntual primero.
+  municipio?: Municipio;
 }
 
 export interface ViasFilters {
   localidadCod?: string;
   barrioCod?: string;
+  municipio?: Municipio;
 }
 
 // ============================================================
@@ -101,6 +119,7 @@ export interface Localidad {
   id: number;
   identificador: string;
   nombre: string;
+  municipio: Municipio;
 }
 
 export interface Barrio {

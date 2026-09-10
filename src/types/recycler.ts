@@ -1,4 +1,5 @@
 // types/recycler.ts
+import type { Municipio } from "./geo";
 
 // ============================================================
 // CATÁLOGOS
@@ -121,6 +122,9 @@ export interface RecyclersFilters {
   // identificador del barrio (mismo campo que usan los selects de barrio
   // del resto de la app).
   barrioId?: string;
+  // "BARRANQUILLA" | "PUERTO_COLOMBIA" — independiente de barrioId,
+  // combinable con el resto.
+  municipio?: Municipio;
   // Coincide contra nombre, cédula, nombre de barrio asignado y nombre de
   // ruta asignada — no solo nombre/cédula como antes.
   search?: string;

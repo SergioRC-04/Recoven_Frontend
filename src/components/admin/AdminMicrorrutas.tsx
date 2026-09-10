@@ -25,6 +25,7 @@ import type {
   GeoJsonFeatureCollection,
   BarrioProperties,
   ViaProperties,
+  Municipio,
 } from "../../types/geo";
 import type { Recycler } from "../../types/recycler";
 import {
@@ -51,6 +52,12 @@ type FormModalState =
   | null;
 
 export default function AdminMicrorrutas() {
+  // El filtro más amplio de todos, y el primero visualmente — Barranquilla
+  // se divide en localidades/barrios; Puerto Colombia hoy es una sola
+  // "localidad" que cubre todo el municipio (ver schema.prisma, enum
+  // Municipio). Cambiarlo reinicia localidad/barrio/macrorruta, porque
+  // esas opciones ya no aplicarían necesariamente a la otra ciudad.
+  const [selectedCiudad, setSelectedCiudad] = useState<Municipio | "">("");
   const [selectedLocalidad, setSelectedLocalidad] = useState("");
   const [selectedBarrio, setSelectedBarrio] = useState("");
   // Independiente de localidad/barrio: filtra por en qué localidad cae la
@@ -60,11 +67,13 @@ export default function AdminMicrorrutas() {
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [macrorrutas, setMacrorrutas] = useState<MacrorrutaResumen[]>([]);
 
-  // GeoJSON de todos los barrios (carga única al montar)
+  // GeoJSON de todos los barrios de la ciudad activa (se recarga al
+  // cambiar de ciudad, ya no es una carga única para toda la app).
   const [todosLosBarriosGeo, setTodosLosBarriosGeo] =
     useState<GeoJsonFeatureCollection<BarrioProperties> | null>(null);
 
-  // GeoJSON de vías (carga única)
+  // GeoJSON de vías de la ciudad activa — hoy siempre vacío para Puerto
+  // Colombia (no se cargó ninguna vía ahí), pero el filtro funciona igual.
   const [viasGeo, setViasGeo] = useState<GeoJsonFeatureCollection<ViaProperties> | null>(null);
 
   const [microrrutasGeo, setMicrorrutasGeo] = useState<MicrorrutasGeoJson | null>(null);
@@ -101,11 +110,14 @@ export default function AdminMicrorrutas() {
 
   // ─── Carga de datos iniciales ────────────────────────────────────────────────
 
+  // Localidades — se recarga al cambiar de ciudad. Cambiar de ciudad
+  // también limpia localidad/barrio/macrorruta, porque esas selecciones
+  // ya no aplican necesariamente a la ciudad nueva.
   useEffect(() => {
-    getLocalidadesList()
+    getLocalidadesList(selectedCiudad || undefined)
       .then(setLocalidades)
       .catch((err) => console.error("Error cargando localidades:", err));
-  }, []);
+  }, [selectedCiudad]);
 
   // Lista de macrorrutas para el select de filtro — se refresca con
   // refreshKey para que una macrorruta recién creada (al crear la
@@ -129,25 +141,27 @@ export default function AdminMicrorrutas() {
       .catch((err) => console.error("Error cargando recicladores:", err));
   }, [refreshKey]);
 
+  // Barrios de la ciudad activa — se recarga al cambiar de ciudad.
   useEffect(() => {
-    getBarriosGeoJson()
+    getBarriosGeoJson(selectedCiudad ? { municipio: selectedCiudad } : {})
       .then(setTodosLosBarriosGeo)
       .catch((err) => console.error("Error cargando todos los barrios:", err));
-  }, []);
+  }, [selectedCiudad]);
 
+  // Vías de la ciudad activa — hoy siempre vacío para Puerto Colombia.
   useEffect(() => {
-    getViasGeoJson()
+    getViasGeoJson(selectedCiudad ? { municipio: selectedCiudad } : {})
       .then(setViasGeo)
       .catch((err) => console.error("Error cargando vías:", err));
-  }, []);
+  }, [selectedCiudad]);
 
   useEffect(() => {
-    getMicrorrutas()
+    getMicrorrutas({ municipio: selectedCiudad || undefined })
       .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
       .catch((err) =>
         console.error("Error cargando el total de microrrutas para los filtros:", err)
       );
-  }, [refreshKey]);
+  }, [selectedCiudad, refreshKey]);
 
   // ─── Cálculo derivado de barrios y barriosGeo (sin setState en efectos) ────
 
@@ -203,6 +217,7 @@ export default function AdminMicrorrutas() {
       localidadCod: selectedLocalidad || undefined,
       barrioCod: selectedBarrio || undefined,
       macrorrutaNumero: selectedMacrorruta || undefined,
+      municipio: selectedCiudad || undefined,
     })
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
@@ -217,7 +232,7 @@ export default function AdminMicrorrutas() {
     return () => {
       setMicrorrutasGeo(null);
     };
-  }, [selectedLocalidad, selectedBarrio, selectedMacrorruta, refreshKey]);
+  }, [selectedCiudad, selectedLocalidad, selectedBarrio, selectedMacrorruta, refreshKey]);
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
@@ -247,6 +262,17 @@ export default function AdminMicrorrutas() {
   });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
+
+  // Cambiar de ciudad limpia localidad/barrio/macrorruta — esas opciones
+  // pertenecen a la ciudad anterior y ya no tendría sentido dejarlas
+  // seleccionadas (una localidad de Barranquilla no existe al ver Puerto
+  // Colombia, y viceversa).
+  const handleCiudadChange = (value: Municipio | "") => {
+    setSelectedCiudad(value);
+    setSelectedLocalidad("");
+    setSelectedBarrio("");
+    setSelectedMacrorruta("");
+  };
 
   const handleLocalidadChange = (value: string) => {
     setSelectedLocalidad(value);
@@ -324,6 +350,7 @@ export default function AdminMicrorrutas() {
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
         macrorrutaNumero: selectedMacrorruta || undefined,
+        municipio: selectedCiudad || undefined,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -406,6 +433,21 @@ export default function AdminMicrorrutas() {
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div>
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Ciudad
+          </label>
+          <select
+            value={selectedCiudad}
+            disabled={isBusy}
+            onChange={(e) => handleCiudadChange(e.target.value as Municipio | "")}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+          >
+            <option value="">Todas</option>
+            <option value="BARRANQUILLA">Barranquilla</option>
+            <option value="PUERTO_COLOMBIA">Puerto Colombia</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
             Localidad
           </label>
           <select
@@ -465,11 +507,15 @@ export default function AdminMicrorrutas() {
         <button
           type="button"
           onClick={() => {
+            setSelectedCiudad("");
             setSelectedLocalidad("");
             setSelectedBarrio("");
             setSelectedMacrorruta("");
           }}
-          disabled={isBusy || (!selectedLocalidad && !selectedBarrio && !selectedMacrorruta)}
+          disabled={
+            isBusy ||
+            (!selectedCiudad && !selectedLocalidad && !selectedBarrio && !selectedMacrorruta)
+          }
           className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FaEraser /> Limpiar filtros
@@ -561,6 +607,7 @@ export default function AdminMicrorrutas() {
             localidadCod: selectedLocalidad || undefined,
             barrioCod: selectedBarrio || undefined,
             macrorrutaNumero: selectedMacrorruta || undefined,
+            municipio: selectedCiudad || undefined,
           }}
           onClose={() => setMostrarExportarCapas(false)}
         />

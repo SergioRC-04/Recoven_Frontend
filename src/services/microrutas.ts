@@ -38,6 +38,7 @@ export async function getMicrorrutas(filters?: MicrorrutasFilters): Promise<Micr
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
+  if (filters?.municipio) params.append("municipio", filters.municipio);
   const query = params.toString();
   const raw = await recovenApi.get<unknown>(`/microrrutas${query ? `?${query}` : ""}`, false);
   return normalizeMicrorrutasGeoJson(raw);
@@ -228,6 +229,7 @@ export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Pr
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
+  if (filters?.municipio) params.append("municipio", filters.municipio);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
 }
@@ -247,5 +249,6 @@ export async function exportarMicrorrutasCapa(
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
+  if (filters?.municipio) params.append("municipio", filters.municipio);
   return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
 }

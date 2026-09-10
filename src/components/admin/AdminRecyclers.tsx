@@ -8,6 +8,7 @@ import {
   FaBan,
   FaPlus,
   FaSearch,
+  FaEraser,
   FaFileExcel,
   FaIdCard,
   FaSpinner,
@@ -23,7 +24,7 @@ import {
 import { getBarriosList } from "../../services/geo";
 import { descargarBlob } from "../../lib/descargarBlob";
 import { CLASIFICACION_LABELS, type Recycler, type Clasificacion } from "../../types/recycler";
-import type { Barrio } from "../../types/geo";
+import type { Barrio, Municipio } from "../../types/geo";
 import RecyclersTable from "./RecyclersTable";
 import RecyclerFormModal from "./RecyclerFormModal";
 import ExportarRecyclersModal from "./ExportarRecyclersModal";
@@ -69,6 +70,11 @@ export default function AdminRecyclers() {
   // reemplazan a las antiguas pestañas (una sola, excluyente) por
   // selects, tal como se pidió. "" o "todos" significa "sin filtrar por
   // esta dimensión".
+  // El filtro más amplio de los seis, y el primero visualmente — mismo
+  // concepto que en AdminMicrorrutas.tsx: Barranquilla se divide en
+  // localidades/barrios; Puerto Colombia hoy es una sola "localidad" que
+  // cubre todo el municipio.
+  const [ciudadFiltro, setCiudadFiltro] = useState<Municipio | "">("");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("activos");
   const [rutasFiltro, setRutasFiltro] = useState<RutasFiltro>("");
   const [clasificacionFiltro, setClasificacionFiltro] = useState<Clasificacion | "">("");
@@ -103,6 +109,16 @@ export default function AdminRecyclers() {
   const [tableKey, setTableKey] = useState(0);
   const refresh = () => setTableKey((k) => k + 1);
 
+  // Cambiar de ciudad limpia barrioFiltro, en el mismo evento (no en un
+  // efecto aparte) — un barrio de Barranquilla no existe al ver Puerto
+  // Colombia y viceversa. Mismo criterio que handleLocalidadChange en
+  // AdminMicrorrutas.tsx: la derivación es síncrona, así que vive en el
+  // handler que la origina, no en un useEffect.
+  const handleCiudadChange = (value: Municipio | "") => {
+    setCiudadFiltro(value);
+    setBarrioFiltro("");
+  };
+
   const tableRequestIdRef = useRef(0);
 
   // Debounce del campo de búsqueda (400 ms).
@@ -111,9 +127,9 @@ export default function AdminRecyclers() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  // Barrios para el filtro — una sola vez.
+  // Barrios para el filtro — se recarga al cambiar de ciudad.
   useEffect(() => {
-    getBarriosList()
+    getBarriosList(undefined, ciudadFiltro || undefined)
       .then((data) => {
         const ordenados = [...data].sort((a, b) =>
           a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
@@ -121,7 +137,7 @@ export default function AdminRecyclers() {
         setBarrios(ordenados);
       })
       .catch((err) => console.error("Error cargando barrios para el filtro:", err));
-  }, []);
+  }, [ciudadFiltro]);
 
   // Tabla de recicladores — se recarga al cambiar cualquiera de las cinco
   // dimensiones de filtro o tableKey. Las cinco viajan combinadas en la
@@ -135,6 +151,7 @@ export default function AdminRecyclers() {
       clasificacion: clasificacionFiltro || undefined,
       censado: censoFiltro === "todos" ? undefined : censoFiltro === "censados",
       barrioId: barrioFiltro || undefined,
+      municipio: ciudadFiltro || undefined,
       search: search || undefined,
     })
       .then((data) => {
@@ -150,7 +167,16 @@ export default function AdminRecyclers() {
     return () => {
       setRecyclers(null); // → loading = true durante el siguiente fetch
     };
-  }, [estadoFiltro, rutasFiltro, clasificacionFiltro, censoFiltro, barrioFiltro, search, tableKey]);
+  }, [
+    ciudadFiltro,
+    estadoFiltro,
+    rutasFiltro,
+    clasificacionFiltro,
+    censoFiltro,
+    barrioFiltro,
+    search,
+    tableKey,
+  ]);
 
   // KPIs derivados de la lista YA filtrada — no un fetch aparte. Esto es
   // justamente lo que hace que "obedezcan a los filtros": si el filtro
@@ -301,6 +327,24 @@ export default function AdminRecyclers() {
     window.open(urlCertificadosGeneral, "_blank");
   };
 
+  const hayFiltrosActivos =
+    estadoFiltro !== "activos" ||
+    rutasFiltro !== "" ||
+    clasificacionFiltro !== "" ||
+    censoFiltro !== "todos" ||
+    barrioFiltro !== "" ||
+    searchInput !== "";
+
+  const handleLimpiarFiltros = () => {
+    setEstadoFiltro("activos");
+    setRutasFiltro("");
+    setClasificacionFiltro("");
+    setCensoFiltro("todos");
+    setBarrioFiltro("");
+    setSearchInput("");
+    setSearch("");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
@@ -374,9 +418,24 @@ export default function AdminRecyclers() {
         />
       </div>
 
-      {/* Filtros — cinco dimensiones independientes (select) + búsqueda de
+      {/* Filtros — seis dimensiones independientes (select) + búsqueda de
           texto libre, en vez de las antiguas pestañas excluyentes. */}
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Ciudad
+          </label>
+          <select
+            value={ciudadFiltro}
+            onChange={(e) => handleCiudadChange(e.target.value as Municipio | "")}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          >
+            <option value="">Todas</option>
+            <option value="BARRANQUILLA">Barranquilla</option>
+            <option value="PUERTO_COLOMBIA">Puerto Colombia</option>
+          </select>
+        </div>
+
         <div>
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
             Estado
@@ -458,7 +517,7 @@ export default function AdminRecyclers() {
           </select>
         </div>
 
-        <div className="relative ml-auto">
+        <div className="relative">
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
             Buscar
           </label>
@@ -471,6 +530,16 @@ export default function AdminRecyclers() {
             className="mt-1 rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={handleLimpiarFiltros}
+          disabled={!hayFiltrosActivos}
+          title="Limpiar filtros"
+          className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <FaEraser /> Limpiar filtros
+        </button>
       </div>
 
       {loading ? (

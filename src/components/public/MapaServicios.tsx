@@ -23,7 +23,7 @@ import {
 import { getMicrorrutas } from "../../services/microrutas";
 import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
 import { DIAS_SEMANA, DIA_EVENTUAL, type MicrorrutaProperties } from "../../types/microrruta";
-import type { Localidad, Barrio } from "../../types/geo";
+import type { Localidad, Barrio, Municipio } from "../../types/geo";
 
 const VIEW_PROJ = "EPSG:3857";
 const DATA_PROJ = "EPSG:4326";
@@ -97,6 +97,16 @@ function estiloMicrorrutaSeleccionada(_feature: unknown, resolution: number): St
 
 type Ciudad = "Barranquilla" | "Puerto Colombia";
 
+// Traduce la etiqueta visual (la que usan las pestañas) al valor real que
+// entienden el backend y el resto de la app (enum Municipio en Prisma).
+// Se mantiene Ciudad como su propio tipo, en vez de usar Municipio
+// directamente en el estado, para no atar la UI (con sus emojis y
+// mayúsculas propias) al nombre exacto del enum.
+const CIUDAD_A_MUNICIPIO: Record<Ciudad, Municipio> = {
+  Barranquilla: "BARRANQUILLA",
+  "Puerto Colombia": "PUERTO_COLOMBIA",
+};
+
 // NOTA: se asume que las propiedades de los features GeoJSON exponen el mismo campo
 // "identificador" que ya usan los listados (Localidad.identificador / Barrio.identificador).
 // Si el GeoJSON del backend usa otro nombre de campo, ajustar esta constante.
@@ -135,10 +145,12 @@ export default function MapaServicios() {
   // llena con los mismos datos que ya se piden para la capa del mapa, con
   // el mismo filtro activo, no es una petición aparte.
   const [microrrutasList, setMicrorrutasList] = useState<MicrorrutaProperties[]>([]);
-  // Lista COMPLETA de microrrutas, sin ningún filtro — independiente de
-  // microrrutasList (que sí respeta el filtro activo). Se usa únicamente
-  // para calcular cuántas rutas tiene cada localidad/barrio y mostrarlo
-  // junto a cada opción de los selects de filtro.
+  // Lista COMPLETA de microrrutas de la ciudad activa, sin filtro de
+  // localidad/barrio — independiente de microrrutasList (que sí respeta
+  // ese filtro). Se usa únicamente para calcular cuántas rutas tiene cada
+  // localidad/barrio y mostrarlo junto a cada opción de los selects de
+  // filtro. Se recarga al cambiar de ciudad (antes era una carga única,
+  // cuando solo existía Barranquilla).
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
   // Microrruta resaltada al hacer clic en ella en el mapa — se refleja en
   // la tarjeta correspondiente de la lista de la derecha.
@@ -184,28 +196,33 @@ export default function MapaServicios() {
   // fit() por su cuenta — cada una marca que ya está lista y llama a
   // intentarEncuadreInicial(), que solo actúa cuando AMBAS lo están, y solo
   // una vez en toda la vida del componente (encuadreInicialHechoRef).
+  // Una vez que esto ya pasó, un cambio de CIUDAD reencuadra por su cuenta
+  // (ver el efecto de localidades más abajo) — no vuelve a pasar por aquí.
   const localidadesListasRef = useRef(false);
   const microrrutasListasRef = useRef(false);
   const encuadreInicialHechoRef = useRef(false);
 
-  // Cargar localidades (listado) al montar
+  // Cargar localidades (listado) al montar y cada vez que cambia la ciudad.
   useEffect(() => {
     const loadLocalidades = async () => {
       try {
-        const data = await getLocalidadesList();
+        const data = await getLocalidadesList(CIUDAD_A_MUNICIPIO[selectedCity]);
         setLocalidades(data);
       } catch (error) {
         console.error("Error cargando localidades:", error);
       }
     };
     loadLocalidades();
-  }, []);
+  }, [selectedCity]);
 
-  // Cargar barrios (listado) cuando cambia localidad
+  // Cargar barrios (listado) cuando cambia localidad o ciudad
   useEffect(() => {
     const loadBarrios = async () => {
       try {
-        const data = await getBarriosList(selectedLocalidad || undefined);
+        const data = await getBarriosList(
+          selectedLocalidad || undefined,
+          CIUDAD_A_MUNICIPIO[selectedCity]
+        );
         const ordenados = [...data].sort((a, b) =>
           a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
         );
@@ -218,20 +235,19 @@ export default function MapaServicios() {
       }
     };
     loadBarrios();
-  }, [selectedLocalidad, selectedBarrio]);
+  }, [selectedLocalidad, selectedBarrio, selectedCity]);
 
-  // Todas las microrrutas, sin filtro — solo para los conteos que se
-  // muestran junto a cada opción de los selects de Localidad/Barrio. Se
-  // carga una sola vez: a diferencia del admin, en esta página pública no
-  // hay forma de crear/editar/borrar rutas, así que no hace falta volver a
-  // pedirla más adelante.
+  // Todas las microrrutas de la ciudad activa, sin filtro de
+  // localidad/barrio — solo para los conteos que se muestran junto a cada
+  // opción de los selects de Localidad/Barrio. Se recarga al cambiar de
+  // ciudad (antes era una carga única, cuando solo existía Barranquilla).
   useEffect(() => {
-    getMicrorrutas()
+    getMicrorrutas({ municipio: CIUDAD_A_MUNICIPIO[selectedCity] })
       .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
       .catch((err) =>
         console.error("Error cargando el total de microrrutas para los filtros:", err)
       );
-  }, []);
+  }, [selectedCity]);
 
   // Determina a qué localidad pertenece un barrio, sin depender de ningún campo del backend:
   // usa el centro del bounding box del barrio y prueba contra cada polígono de localidad ya
@@ -452,16 +468,24 @@ export default function MapaServicios() {
     applyLayerVisibility();
   }, [selectedBarrio, applyLayerVisibility, resolveParentLocalidadId]);
 
-  // Cargar localidades (GeoJSON) una sola vez — ya NO encuadra la cámara
-  // por su cuenta (ver intentarEncuadreInicial): solo carga los datos y
-  // marca que está lista.
+  // Cargar localidades (GeoJSON) al montar y cada vez que cambia la
+  // ciudad. La primera vez, NO encuadra la cámara por su cuenta (ver
+  // intentarEncuadreInicial): solo carga los datos y marca que está
+  // lista. A partir de la segunda vez (un cambio de ciudad DESPUÉS del
+  // encuadre inicial), sí reencuadra directamente a la extensión de la
+  // ciudad nueva — sin esto, cambiar a Puerto Colombia dejaría la cámara
+  // donde estaba (sobre Barranquilla), aunque las capas ya muestren los
+  // datos correctos.
   useEffect(() => {
     const loadLocalidadesGeo = async () => {
       const localidadesLayer = layerLocalidadesRef.current;
+      const map = mapRef.current;
       if (!localidadesLayer) return;
 
       try {
-        const localidadesGeo = await getLocalidadesGeoJson();
+        const localidadesGeo = await getLocalidadesGeoJson({
+          municipio: CIUDAD_A_MUNICIPIO[selectedCity],
+        });
         const source = new VectorSource({
           features: new GeoJSON({
             dataProjection: DATA_PROJ,
@@ -470,6 +494,18 @@ export default function MapaServicios() {
         });
         localidadesLayer.setSource(source);
         applyLayerVisibility();
+
+        if (encuadreInicialHechoRef.current && map) {
+          const extent = source.getExtent();
+          if (extent && !isEmpty(extent)) {
+            isProgrammaticMoveRef.current = true;
+            map.getView().fit(extent, {
+              padding: [60, 60, 60, 60],
+              duration: 500,
+              maxZoom: 15,
+            });
+          }
+        }
       } catch (error) {
         console.error("Error cargando localidades GeoJSON:", error);
       } finally {
@@ -482,10 +518,11 @@ export default function MapaServicios() {
     };
 
     loadLocalidadesGeo();
-  }, [applyLayerVisibility, intentarEncuadreInicial]);
+  }, [selectedCity, applyLayerVisibility, intentarEncuadreInicial]);
 
-  // Cargar barrios (GeoJSON) cuando cambia la localidad seleccionada; si hay una localidad
-  // seleccionada, encuadrar el mapa a su extensión.
+  // Cargar barrios (GeoJSON) cuando cambia la localidad o la ciudad
+  // seleccionada; si hay una localidad seleccionada, encuadrar el mapa a
+  // su extensión.
   useEffect(() => {
     const loadBarriosGeo = async () => {
       const map = mapRef.current;
@@ -493,9 +530,10 @@ export default function MapaServicios() {
       if (!map || !barriosLayer) return;
 
       try {
-        const barriosGeo = await getBarriosGeoJson(
-          selectedLocalidad ? { localidadCod: selectedLocalidad } : {}
-        );
+        const barriosGeo = await getBarriosGeoJson({
+          ...(selectedLocalidad ? { localidadCod: selectedLocalidad } : {}),
+          municipio: CIUDAD_A_MUNICIPIO[selectedCity],
+        });
         const source = new VectorSource({
           features: new GeoJSON({
             dataProjection: DATA_PROJ,
@@ -554,11 +592,12 @@ export default function MapaServicios() {
     };
 
     loadBarriosGeo();
-  }, [selectedLocalidad, applyLayerVisibility, resolveParentLocalidadId]);
+  }, [selectedLocalidad, selectedCity, applyLayerVisibility, resolveParentLocalidadId]);
 
-  // Cargar microrrutas (GeoJSON) — se repite cada vez que cambia localidad o barrio, usando
-  // los mismos filtros que ya existen para barrios. Sin vías: esta capa es solo para mostrar
-  // públicamente dónde opera el servicio, no para trazar/editar rutas. Siempre visible, sin
+  // Cargar microrrutas (GeoJSON) — se repite cada vez que cambia ciudad,
+  // localidad o barrio, usando los mismos filtros que ya existen para
+  // barrios. Sin vías: esta capa es solo para mostrar públicamente dónde
+  // opera el servicio, no para trazar/editar rutas. Siempre visible, sin
   // depender del nivel de zoom (a diferencia de localidades/barrios).
   useEffect(() => {
     const esCargaInicialSinFiltro = !selectedLocalidad && !selectedBarrio;
@@ -571,6 +610,7 @@ export default function MapaServicios() {
         const microrrutasGeo = await getMicrorrutas({
           localidadCod: selectedLocalidad || undefined,
           barrioCod: selectedBarrio || undefined,
+          municipio: CIUDAD_A_MUNICIPIO[selectedCity],
         });
         const source = new VectorSource({
           features: new GeoJSON({
@@ -597,7 +637,7 @@ export default function MapaServicios() {
     };
 
     loadMicrorrutasGeo();
-  }, [selectedLocalidad, selectedBarrio, intentarEncuadreInicial]);
+  }, [selectedCity, selectedLocalidad, selectedBarrio, intentarEncuadreInicial]);
 
   // Interacción Select: clic en una microrruta la resalta (estilo rojo,
   // ver estiloMicrorrutaSeleccionada) y avisa que se seleccionó — la lista
@@ -611,8 +651,8 @@ export default function MapaServicios() {
   // cleanup NO vuelve a poner null: si lo hiciera, cada vez que este mismo
   // efecto se recrea por un cambio de selección se autocancelaría la
   // selección recién pedida, un instante antes de aplicarla. También se
-  // recrea con el filtro de localidad/barrio, porque ahí sí cambia la
-  // fuente de datos de la capa.
+  // recrea con el filtro de ciudad/localidad/barrio, porque ahí sí cambia
+  // la fuente de datos de la capa.
   useEffect(() => {
     const map = mapRef.current;
     const microrrutasLayer = layerMicrorrutasRef.current;
@@ -642,7 +682,7 @@ export default function MapaServicios() {
     return () => {
       map.removeInteraction(select);
     };
-  }, [selectedLocalidad, selectedBarrio, selectedMicrorrutaId]);
+  }, [selectedCity, selectedLocalidad, selectedBarrio, selectedMicrorrutaId]);
 
   // Lleva la tarjeta seleccionada a la vista dentro de la lista — no la
   // reordena (a diferencia de la tabla del admin), solo hace scroll hasta
@@ -653,20 +693,21 @@ export default function MapaServicios() {
     card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedMicrorrutaId]);
 
-  // Manejador de cambio de ciudad
+  // Manejador de cambio de ciudad — limpia localidad/barrio en el mismo
+  // evento (no en un efecto aparte): una localidad de Barranquilla no
+  // existe al ver Puerto Colombia y viceversa. Ya no hay ningún caso
+  // especial ni alerta de "Próximamente" — las dos ciudades cargan datos
+  // reales.
   const handleCityChange = (city: Ciudad) => {
     setSelectedCity(city);
     setSelectedLocalidad("");
     setSelectedBarrio("");
-    if (city === "Puerto Colombia") {
-      alert("Próximamente cobertura y servicios en Puerto Colombia");
-      setSelectedCity("Barranquilla");
-    }
   };
 
   // Conteos para los selects de Localidad/Barrio, calculados sobre
-  // todasLasMicrorrutas (sin filtro) — no sobre microrrutasList, que
-  // cambia según el filtro activo y daría un conteo incorrecto.
+  // todasLasMicrorrutas (sin filtro de localidad/barrio, pero SÍ ya
+  // acotado a la ciudad activa) — no sobre microrrutasList, que cambia
+  // según el filtro activo y daría un conteo incorrecto.
   const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
   const localidadesOrdenadas = ordenarPorConteo(
     localidades,
@@ -716,10 +757,10 @@ export default function MapaServicios() {
               className={`rounded-t-lg px-6 py-2 font-bold transition ${
                 selectedCity === "Puerto Colombia"
                   ? "bg-emerald-600 text-white"
-                  : "bg-emerald-900/60 text-emerald-300/60 hover:bg-emerald-800/60 hover:text-white"
+                  : "bg-emerald-900/60 text-emerald-300 hover:bg-emerald-800/60 hover:text-white"
               }`}
             >
-              ⚓ Puerto Colombia <span className="text-[10px] opacity-75">(Próximamente)</span>
+              ⚓ Puerto Colombia
             </button>
           </div>
         </div>

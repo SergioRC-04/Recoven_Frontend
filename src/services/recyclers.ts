@@ -29,6 +29,7 @@ export async function getRecyclers(filters: RecyclersFilters): Promise<Recycler[
   if (filters.clasificacion) params.append("clasificacion", filters.clasificacion);
   if (filters.censado !== undefined) params.append("censado", String(filters.censado));
   if (filters.barrioId) params.append("barrioId", filters.barrioId);
+  if (filters.municipio) params.append("municipio", filters.municipio);
   if (filters.search) params.append("search", filters.search);
   const query = params.toString();
   return recovenApi.get(`/recyclers${query ? `?${query}` : ""}`, true);

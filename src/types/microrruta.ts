@@ -1,5 +1,5 @@
 // types/microrruta.ts
-import type { GeoJsonFeatureCollection, GeoJsonFeature } from "./geo";
+import type { GeoJsonFeatureCollection, GeoJsonFeature, Municipio } from "./geo";
 
 // ============================================================
 // GEOMETRÍA (siempre LineString, EPSG:4326)
@@ -314,6 +314,9 @@ export interface MicrorrutasFilters {
   // dimensión de filtro distinta a localidadCod: esa filtra por barrio
   // tocado; esta filtra por dónde cae la MAYOR parte del trazo.
   macrorrutaNumero?: string;
+  // "BARRANQUILLA" | "PUERTO_COLOMBIA" — el filtro más amplio de los
+  // cuatro, independiente de los demás y combinable con ellos.
+  municipio?: Municipio;
 }
 
 // Una fila del selector de macrorrutas del admin — solo las que
