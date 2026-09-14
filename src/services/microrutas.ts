@@ -12,6 +12,7 @@ import type {
   MacrorrutaResumen,
   MacrorrutasMapaGeoJson,
 } from "../types/microrruta";
+import type { Municipio } from "../types/geo";
 
 // ============================================================
 // LECTURA
@@ -133,10 +134,13 @@ export async function getMicrorrutasList(): Promise<{ id: number; nombre: string
  *
  * Controller: GET /microrrutas/macrorrutas  (sin guard)
  */
-export async function getMacrorrutas(): Promise<MacrorrutaResumen[]> {
+export async function getMacrorrutas(municipio?: Municipio): Promise<MacrorrutaResumen[]> {
+  const params = new URLSearchParams();
+  if (municipio) params.append("municipio", municipio);
+  const query = params.toString();
   const raw = await recovenApi.get<
     Array<{ numero: string; localidad_cod: string; localidad_nombre: string; total: number }>
-  >("/microrrutas/macrorrutas", false);
+  >(`/microrrutas/macrorrutas${query ? `?${query}` : ""}`, false);
   return raw.map((m) => ({
     numero: m.numero,
     localidadCod: m.localidad_cod,
@@ -232,6 +236,24 @@ export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Pr
   if (filters?.municipio) params.append("municipio", filters.municipio);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
+}
+
+/**
+ * Excel "espejo" de MicrorrutasTable.tsx (Nombre, Tipo, Fecha, Días,
+ * Trabajador, Barrio) — para uso interno/operativo, distinto del formato
+ * oficial del SUI (exportarMicrorrutasExcel). Admite los mismos filtros,
+ * para que siempre coincida con lo que se ve en la tabla del admin.
+ *
+ * Controller: GET /microrrutas/exportar-tabla  (JwtAuthGuard)
+ */
+export async function exportarMicrorrutasTabla(filters?: MicrorrutasFilters): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
+  if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
+  if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
+  if (filters?.municipio) params.append("municipio", filters.municipio);
+  const query = params.toString();
+  return recovenApi.getBlob(`/microrrutas/exportar-tabla${query ? `?${query}` : ""}`, true);
 }
 
 /**

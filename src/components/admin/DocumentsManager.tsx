@@ -24,14 +24,16 @@ import {
   FaTimes,
 } from "react-icons/fa";
 
-// Estado del envío en curso — reemplaza el booleano "uploading" de antes.
-// Con tipo/mensaje explícitos se puede mostrar un banner distinto para
-// cada caso, en vez de un solo alert() genérico para todo.
-type EstadoEnvio =
-  | { tipo: "idle" }
-  | { tipo: "enviando" }
-  | { tipo: "exito"; mensaje: string }
-  | { tipo: "error"; mensaje: string };
+// Un archivo en la cola de envío — cada uno lleva su propia empresa y
+// tipo, a diferencia del modelo anterior (un solo archivo por envío).
+interface ArchivoCertificado {
+  id: string;
+  file: File;
+  empresaId: string;
+  tipo: "PODA" | "RESIDUOS";
+  estado: "pendiente" | "enviando" | "enviado" | "error";
+  mensajeError?: string;
+}
 
 const ESTADO_CERT_LABELS: Record<string, string> = {
   PENDIENTE: "Pendiente",
@@ -54,10 +56,12 @@ export default function DocumentsManager() {
 
   // Certificates state
   const [history, setHistory] = useState<Certificate[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [certType, setCertType] = useState<"PODA" | "RESIDUOS">("PODA");
-  const [file, setFile] = useState<File | null>(null);
-  const [estadoEnvio, setEstadoEnvio] = useState<EstadoEnvio>({ tipo: "idle" });
+  // Cola de archivos pendientes de enviar — reemplaza a
+  // selectedCustomerId/certType/file (un solo archivo a la vez). Cada
+  // entrada trae su propia empresa, tipo y estado de envío.
+  const [archivos, setArchivos] = useState<ArchivoCertificado[]>([]);
+  // Progreso del lote en curso — null cuando no hay ningún envío activo.
+  const [progreso, setProgreso] = useState<{ actual: number; total: number } | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const loadCustomers = async () => {
@@ -83,15 +87,6 @@ export default function DocumentsManager() {
     loadCustomers();
     loadHistory();
   }, []);
-
-  // El banner de éxito/error se retira solo después de un rato — el de
-  // "enviando" se retira naturalmente cuando la petición termina, así que
-  // no necesita temporizador.
-  useEffect(() => {
-    if (estadoEnvio.tipo !== "exito" && estadoEnvio.tipo !== "error") return;
-    const timeout = setTimeout(() => setEstadoEnvio({ tipo: "idle" }), 8000);
-    return () => clearTimeout(timeout);
-  }, [estadoEnvio]);
 
   const handleCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,65 +118,97 @@ export default function DocumentsManager() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
+  // Agrega uno o más archivos a la cola — cada uno arranca sin empresa
+  // asignada (el usuario la elige por fila) y con tipo PODA por defecto,
+  // igual que el valor inicial del formulario de un solo archivo de antes.
+  const agregarArchivos = (nuevos: FileList | File[]) => {
+    const entradas: ArchivoCertificado[] = Array.from(nuevos).map((f) => ({
+      id: crypto.randomUUID(),
+      file: f,
+      empresaId: "",
+      tipo: "PODA",
+      estado: "pendiente",
+    }));
+    setArchivos((prev) => [...prev, ...entradas]);
   };
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCustomerId || !certType || !file) {
-      setEstadoEnvio({
-        tipo: "error",
-        mensaje: "Completa todos los campos y selecciona un archivo antes de enviar.",
-      });
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      agregarArchivos(e.target.files);
+    }
+    // Limpia el input para poder volver a elegir el mismo archivo después
+    // de quitarlo de la cola — sin esto, el navegador no dispara onChange
+    // si se selecciona exactamente el mismo archivo dos veces seguidas.
+    e.target.value = "";
+  };
+
+  const actualizarArchivo = (id: string, cambios: Partial<ArchivoCertificado>) => {
+    setArchivos((prev) => prev.map((a) => (a.id === id ? { ...a, ...cambios } : a)));
+  };
+
+  const quitarArchivo = (id: string) => {
+    setArchivos((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  // Envía la cola completa, un archivo a la vez (no en paralelo) — mismo
+  // criterio que el resto de la app para lotes (ver
+  // generarReporteMicrorrutas en el admin de microrrutas): evita saturar
+  // el backend/Resend con varias subidas a la vez, y deja ver el progreso
+  // archivo por archivo en vez de todo-o-nada. Los que ya se enviaron con
+  // éxito en un intento anterior (por si se reintenta tras un error
+  // parcial) no se vuelven a mandar.
+  const handleEnviarLote = async () => {
+    if (archivos.length === 0) return;
+
+    const sinEmpresa = archivos.some((a) => !a.empresaId);
+    if (sinEmpresa) {
+      alert("Selecciona la empresa de cada archivo antes de enviar.");
       return;
     }
+
+    const pendientes = archivos.filter((a) => a.estado !== "enviado");
     const confirmMsg =
-      "¿Está seguro de registrar este certificado?\n\n" +
+      `¿Está seguro de registrar ${pendientes.length} certificado(s)?\n\n` +
       "⚠️ Esta acción NO es reversible.\n" +
-      "📩 Se enviará un correo electrónico de forma inmediata y directa a la empresa cliente con el documento adjunto.";
+      "📩 Se enviará un correo electrónico de forma inmediata a cada empresa cliente con el enlace al documento.";
     if (!window.confirm(confirmMsg)) return;
 
-    const empresaSeleccionada = customers.find((c) => String(c.id) === selectedCustomerId);
+    setProgreso({ actual: 0, total: pendientes.length });
 
-    setEstadoEnvio({ tipo: "enviando" });
-    const formData = new FormData();
-    formData.append("empresaId", selectedCustomerId);
-    formData.append("tipo", certType);
-    formData.append("file", file);
+    let completados = 0;
+    for (const archivo of pendientes) {
+      actualizarArchivo(archivo.id, { estado: "enviando" });
 
-    try {
-      await uploadCertificate(formData);
-      setEstadoEnvio({
-        tipo: "exito",
-        // La subida/petición ya terminó en este punto — lo que puede
-        // tardar más es la entrega final a la bandeja del destinatario
-        // (sobre todo en correos institucionales con filtros de
-        // seguridad), así que la advertencia de tiempo va aquí, no en el
-        // estado "enviando" (que sí es rápido, son solo unos segundos).
-        mensaje: empresaSeleccionada
-          ? `El certificado fue enviado correctamente a ${empresaSeleccionada.nombre}. Puede tardar unos minutos en llegar a su bandeja, especialmente si es un correo institucional o corporativo con filtros de seguridad propios.`
-          : "El certificado fue enviado correctamente. Puede tardar unos minutos en llegar a la bandeja del destinatario.",
-      });
-      setFile(null);
-      setSelectedCustomerId("");
-      setCertType("PODA");
-      await loadHistory();
-    } catch (error) {
-      console.error("Error subiendo certificado:", error);
-      setEstadoEnvio({
-        tipo: "error",
-        // El mensaje del backend ya explica qué pasó (p. ej. "el intento
-        // quedó registrado como fallido y se notificó por correo") — se
-        // muestra tal cual, en vez de un genérico, para no dejar dudas.
-        mensaje:
-          error instanceof Error
-            ? error.message
-            : "No se pudo procesar el certificado. Intenta de nuevo.",
-      });
+      const formData = new FormData();
+      formData.append("empresaId", archivo.empresaId);
+      formData.append("tipo", archivo.tipo);
+      formData.append("file", archivo.file);
+
+      try {
+        await uploadCertificate(formData);
+        actualizarArchivo(archivo.id, { estado: "enviado" });
+      } catch (error) {
+        console.error("Error subiendo certificado:", error);
+        actualizarArchivo(archivo.id, {
+          estado: "error",
+          // El mensaje del backend ya explica qué pasó (p. ej. "el
+          // intento quedó registrado como fallido y se notificó por
+          // correo") — se muestra tal cual, en vez de un genérico.
+          mensajeError:
+            error instanceof Error ? error.message : "No se pudo procesar el certificado.",
+        });
+      }
+
+      completados += 1;
+      setProgreso({ actual: completados, total: pendientes.length });
     }
+
+    setProgreso(null);
+    // Los que sí se enviaron desaparecen de la cola; los que fallaron se
+    // quedan visibles, con su empresa/tipo ya elegidos, para reintentar
+    // sin tener que volver a armarlos desde cero.
+    setArchivos((prev) => prev.filter((a) => a.estado !== "enviado"));
+    await loadHistory();
   };
 
   const toggleExpand = (id: number) => {
@@ -296,8 +323,8 @@ export default function DocumentsManager() {
             <strong>RECOVEN ECA SAS ESP</strong>.
           </p>
           <p className="mt-2 text-sm">
-            De manera formal y en cumplimiento de los estándares operativos, adjunto a este mensaje
-            encontrará el{" "}
+            De manera formal y en cumplimiento de los estándares operativos, ponemos a su
+            disposición el{" "}
             <strong>
               {isPoda
                 ? "Certificado de Manejo y Disposición Final de Residuos Orgánicos Aprovechables"
@@ -307,13 +334,31 @@ export default function DocumentsManager() {
               ? "correspondiente a las actividades de poda ejecutadas en las zonas de recolección autorizadas."
               : "correspondiente a los proyectos corporativos especiales y de materiales diversos procesados en nuestras plantas de clasificación."}
           </p>
+          <p className="mt-2 text-sm">
+            {cert.urlArchivo ? (
+              <>
+                Aquí está el archivo:{" "}
+                <a
+                  href={cert.urlArchivo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-medium text-emerald-600 underline"
+                >
+                  {cert.urlArchivo}
+                </a>
+              </>
+            ) : (
+              "Aquí está el archivo: (URL no disponible)"
+            )}
+          </p>
           <div className="my-5 rounded-lg border border-dashed border-emerald-500 bg-gray-50 p-5 text-center">
             <p className="m-0 mb-2.5 text-sm font-bold text-emerald-800">
               🔍 Verificación Digital con Código QR
             </p>
             <p className="m-0 mb-4 text-xs text-gray-600">
-              Escanee el siguiente código QR con la cámara de su dispositivo móvil para acceder al
-              documento oficial guardado en nuestro servidor seguro:
+              También puede escanear el siguiente código QR con la cámara de su dispositivo móvil
+              para acceder al documento:
             </p>
             {cert.urlArchivo ? (
               <img
@@ -328,26 +373,6 @@ export default function DocumentsManager() {
                 (QR no disponible — no hay URL de archivo registrada)
               </p>
             )}
-            {cert.urlArchivo && (
-              <p className="mt-3 text-xs">
-                <a
-                  href={cert.urlArchivo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="font-medium text-emerald-600 underline"
-                >
-                  O haga clic aquí para abrir/descargar el certificado
-                </a>
-              </p>
-            )}
-          </div>
-          <div className="my-5 rounded-r border-l-4 border-emerald-500 bg-gray-50 p-4">
-            <p className="m-0 text-xs font-medium text-gray-600">
-              ℹ️ El documento oficial firmado ha sido anexado directamente a este correo electrónico
-              como archivo adjunto en formato digital para su descarga, auditoría y almacenamiento
-              local corporativo.
-            </p>
           </div>
           <p className="mt-4 text-xs leading-relaxed text-gray-400">
             Agradecemos su confianza en nuestros servicios orientados al desarrollo de la economía
@@ -385,86 +410,25 @@ export default function DocumentsManager() {
               <FaPaperPlane className="text-emerald-600" /> Emitir Nuevo Certificado
             </h2>
 
-            {estadoEnvio.tipo !== "idle" && (
-              <div
-                className={`mb-4 flex items-start gap-3 rounded-xl border p-4 text-sm ${
-                  estadoEnvio.tipo === "enviando"
-                    ? "border-blue-200 bg-blue-50 text-blue-800"
-                    : estadoEnvio.tipo === "exito"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-red-200 bg-red-50 text-red-800"
-                }`}
-              >
-                <div className="mt-0.5 text-lg">
-                  {estadoEnvio.tipo === "enviando" && <FaSpinner className="animate-spin" />}
-                  {estadoEnvio.tipo === "exito" && <FaCheckCircle />}
-                  {estadoEnvio.tipo === "error" && <FaExclamationTriangle />}
-                </div>
-                <div className="flex-1">
+            {progreso && (
+              <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <FaSpinner className="animate-spin text-lg" />
+                <div>
                   <p className="font-bold">
-                    {estadoEnvio.tipo === "enviando" && "Enviando certificado..."}
-                    {estadoEnvio.tipo === "exito" && "Certificado enviado"}
-                    {estadoEnvio.tipo === "error" && "Hubo un problema. Intenta de nuevo."}
+                    Enviando {progreso.actual} de {progreso.total}...
                   </p>
                   <p className="mt-0.5 text-xs opacity-90">
-                    {estadoEnvio.tipo === "enviando"
-                      ? "Subiendo el archivo y notificando a la empresa por correo — no cierres esta ventana."
-                      : estadoEnvio.mensaje}
+                    Subiendo cada archivo y notificando a su empresa por correo — no cierres esta
+                    ventana.
                   </p>
                 </div>
-                {estadoEnvio.tipo !== "enviando" && (
-                  <button
-                    type="button"
-                    onClick={() => setEstadoEnvio({ tipo: "idle" })}
-                    className="text-current opacity-60 transition hover:opacity-100"
-                    aria-label="Cerrar aviso"
-                  >
-                    <FaTimes />
-                  </button>
-                )}
               </div>
             )}
 
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold tracking-wider text-gray-700 uppercase">
-                    Seleccionar Empresa
-                  </label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    required
-                    className="mt-1.5 w-full rounded-xl border border-gray-300 bg-white p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    <option value="" disabled>
-                      Seleccione una empresa...
-                    </option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold tracking-wider text-gray-700 uppercase">
-                    Tipo de Certificado
-                  </label>
-                  <select
-                    value={certType}
-                    onChange={(e) => setCertType(e.target.value as "PODA" | "RESIDUOS")}
-                    required
-                    className="mt-1.5 w-full rounded-xl border border-gray-300 bg-white p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    <option value="PODA">🍃 Residuos de Poda</option>
-                    <option value="RESIDUOS">📦 Residuos Aprovechables</option>
-                  </select>
-                </div>
-              </div>
+            <div className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-bold tracking-wider text-gray-700 uppercase">
-                  Documento del Certificado (.docx, .pdf)
+                  Documentos del Certificado (.docx, .pdf)
                 </label>
                 <div
                   className="group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center transition hover:bg-gray-100"
@@ -480,7 +444,7 @@ export default function DocumentsManager() {
                     e.preventDefault();
                     e.currentTarget.classList.remove("border-emerald-500", "bg-gray-100");
                     if (e.dataTransfer.files.length > 0) {
-                      setFile(e.dataTransfer.files[0]);
+                      agregarArchivos(e.dataTransfer.files);
                     }
                   }}
                   onClick={() => document.getElementById("fileInput")?.click()}
@@ -489,6 +453,7 @@ export default function DocumentsManager() {
                     type="file"
                     id="fileInput"
                     accept=".docx,.pdf"
+                    multiple
                     className="hidden"
                     onChange={handleFileChange}
                   />
@@ -496,30 +461,115 @@ export default function DocumentsManager() {
                     <FaCloudUploadAlt />
                   </div>
                   <p className="text-sm font-semibold text-gray-700">
-                    {file
-                      ? `Archivo seleccionado: ${file.name}`
-                      : "Arrastra el archivo aquí o haz clic para explorar"}
+                    Arrastra los archivos aquí o haz clic para explorar
                   </p>
                   <p className="mt-1 text-xs text-gray-400">
-                    Formatos permitidos: Word o PDF hasta 10MB
+                    Puedes seleccionar varios a la vez — Word o PDF hasta 10MB cada uno
                   </p>
                 </div>
               </div>
+
+              {archivos.length > 0 && (
+                <div className="space-y-3">
+                  {archivos.map((a) => {
+                    const bloqueado = a.estado === "enviando" || a.estado === "enviado";
+                    return (
+                      <div
+                        key={a.id}
+                        className={`rounded-xl border p-4 ${
+                          a.estado === "error"
+                            ? "border-red-200 bg-red-50"
+                            : a.estado === "enviado"
+                              ? "border-emerald-200 bg-emerald-50"
+                              : "border-gray-200 bg-gray-50"
+                        }`}
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FaFilePdf className="shrink-0 text-emerald-500" />
+                            <span className="truncate text-sm font-semibold text-gray-800">
+                              {a.file.name}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            {a.estado === "enviando" && (
+                              <FaSpinner className="animate-spin text-blue-500" />
+                            )}
+                            {a.estado === "enviado" && (
+                              <FaCheckCircle className="text-emerald-600" />
+                            )}
+                            {a.estado === "error" && (
+                              <FaExclamationTriangle className="text-red-600" />
+                            )}
+                            {!bloqueado && (
+                              <button
+                                type="button"
+                                onClick={() => quitarArchivo(a.id)}
+                                className="text-gray-400 transition hover:text-red-600"
+                                aria-label="Quitar archivo"
+                              >
+                                <FaTimes />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <select
+                            value={a.empresaId}
+                            onChange={(e) => actualizarArchivo(a.id, { empresaId: e.target.value })}
+                            disabled={bloqueado}
+                            required
+                            className="w-full rounded-xl border border-gray-300 bg-white p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-60"
+                          >
+                            <option value="" disabled>
+                              Seleccione una empresa...
+                            </option>
+                            {customers.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={a.tipo}
+                            onChange={(e) =>
+                              actualizarArchivo(a.id, {
+                                tipo: e.target.value as "PODA" | "RESIDUOS",
+                              })
+                            }
+                            disabled={bloqueado}
+                            required
+                            className="w-full rounded-xl border border-gray-300 bg-white p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-60"
+                          >
+                            <option value="PODA">🍃 Residuos de Poda</option>
+                            <option value="RESIDUOS">📦 Residuos Aprovechables</option>
+                          </select>
+                        </div>
+                        {a.estado === "error" && a.mensajeError && (
+                          <p className="mt-2 text-xs font-medium text-red-700">{a.mensajeError}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="flex justify-end">
                 <button
-                  type="submit"
-                  disabled={estadoEnvio.tipo === "enviando" || !file}
+                  type="button"
+                  onClick={handleEnviarLote}
+                  disabled={progreso !== null || archivos.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-bold text-white shadow-md transition hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {estadoEnvio.tipo === "enviando" ? (
-                    <FaSpinner className="animate-spin" />
-                  ) : (
-                    <FaPaperPlane />
-                  )}
-                  {estadoEnvio.tipo === "enviando" ? "Enviando..." : "Enviar Correo"}
+                  {progreso ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}
+                  {progreso
+                    ? "Enviando..."
+                    : `Enviar ${archivos.length > 0 ? archivos.length : ""} Certificado${
+                        archivos.length === 1 ? "" : "s"
+                      }`}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
 

@@ -9,12 +9,16 @@ import {
   FaLayerGroup,
   FaSpinner,
   FaMap,
+  FaFileAlt,
+  FaChevronDown,
+  FaTable,
 } from "react-icons/fa";
 import { getLocalidadesList, getBarriosGeoJson, getViasGeoJson } from "../../services/geo";
 import {
   getMicrorrutas,
   deleteMicrorruta,
   exportarMicrorrutasExcel,
+  exportarMicrorrutasTabla,
   getMacrorrutas,
 } from "../../services/microrutas";
 import { getRecyclers } from "../../services/recyclers";
@@ -52,12 +56,14 @@ type FormModalState =
   | null;
 
 export default function AdminMicrorrutas() {
-  // El filtro más amplio de todos, y el primero visualmente — Barranquilla
-  // se divide en localidades/barrios; Puerto Colombia hoy es una sola
-  // "localidad" que cubre todo el municipio (ver schema.prisma, enum
-  // Municipio). Cambiarlo reinicia localidad/barrio/macrorruta, porque
-  // esas opciones ya no aplicarían necesariamente a la otra ciudad.
-  const [selectedCiudad, setSelectedCiudad] = useState<Municipio | "">("");
+  // El filtro más amplio de todos — pero a diferencia de
+  // localidad/barrio/macrorruta, NO es un filtro combinable: los datos de
+  // las dos ciudades nunca se mezclan, así que siempre hay una ciudad
+  // activa (nunca "todas"), igual que las pestañas del mapa público
+  // (MapaServicios.tsx). Barranquilla se divide en localidades/barrios;
+  // Puerto Colombia hoy es una sola "localidad" que cubre todo el
+  // municipio (ver schema.prisma, enum Municipio).
+  const [selectedCiudad, setSelectedCiudad] = useState<Municipio>("BARRANQUILLA");
   const [selectedLocalidad, setSelectedLocalidad] = useState("");
   const [selectedBarrio, setSelectedBarrio] = useState("");
   // Independiente de localidad/barrio: filtra por en qué localidad cae la
@@ -88,7 +94,15 @@ export default function AdminMicrorrutas() {
     null
   );
   const [descargandoExcel, setDescargandoExcel] = useState(false);
+  const [descargandoTabla, setDescargandoTabla] = useState(false);
   const [generandoMapaMacrorrutas, setGenerandoMapaMacrorrutas] = useState(false);
+  // Dropdown "Informes" — agrupa las 3 exportaciones de informe (Excel
+  // SUI, PDF SUI, Mapa de Macrorrutas) en un solo botón, para no llenar
+  // el header de botones sueltos. "Exportar Capas" y "Exportar Tabla" NO
+  // usan este patrón: Capas ya tiene su propio modal, y Tabla es una sola
+  // acción directa sin nada que elegir.
+  const [mostrarMenuInformes, setMostrarMenuInformes] = useState(false);
+  const menuInformesRef = useRef<HTMLDivElement>(null);
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
   // Microrruta recién creada, en espera de que el usuario elija (o no) un
@@ -108,13 +122,26 @@ export default function AdminMicrorrutas() {
 
   const isBusy = drawing || editingGeometriaId !== null;
 
+  // Cierra el dropdown "Informes" al hacer clic afuera — patrón estándar,
+  // no depende de ningún otro estado del componente.
+  useEffect(() => {
+    if (!mostrarMenuInformes) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuInformesRef.current && !menuInformesRef.current.contains(e.target as Node)) {
+        setMostrarMenuInformes(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [mostrarMenuInformes]);
+
   // ─── Carga de datos iniciales ────────────────────────────────────────────────
 
   // Localidades — se recarga al cambiar de ciudad. Cambiar de ciudad
   // también limpia localidad/barrio/macrorruta, porque esas selecciones
   // ya no aplican necesariamente a la ciudad nueva.
   useEffect(() => {
-    getLocalidadesList(selectedCiudad || undefined)
+    getLocalidadesList(selectedCiudad)
       .then(setLocalidades)
       .catch((err) => console.error("Error cargando localidades:", err));
   }, [selectedCiudad]);
@@ -124,10 +151,10 @@ export default function AdminMicrorrutas() {
   // primera microrruta de una localidad) aparezca sin recargar la
   // página.
   useEffect(() => {
-    getMacrorrutas()
+    getMacrorrutas(selectedCiudad)
       .then(setMacrorrutas)
       .catch((err) => console.error("Error cargando macrorrutas:", err));
-  }, [refreshKey]);
+  }, [selectedCiudad, refreshKey]);
 
   // Recicladores — alimentan la columna "Trabajador" de la tabla Y la
   // lista de opciones de AsignarTrabajadorModal. refreshKey en las
@@ -143,20 +170,20 @@ export default function AdminMicrorrutas() {
 
   // Barrios de la ciudad activa — se recarga al cambiar de ciudad.
   useEffect(() => {
-    getBarriosGeoJson(selectedCiudad ? { municipio: selectedCiudad } : {})
+    getBarriosGeoJson({ municipio: selectedCiudad })
       .then(setTodosLosBarriosGeo)
       .catch((err) => console.error("Error cargando todos los barrios:", err));
   }, [selectedCiudad]);
 
   // Vías de la ciudad activa — hoy siempre vacío para Puerto Colombia.
   useEffect(() => {
-    getViasGeoJson(selectedCiudad ? { municipio: selectedCiudad } : {})
+    getViasGeoJson({ municipio: selectedCiudad })
       .then(setViasGeo)
       .catch((err) => console.error("Error cargando vías:", err));
   }, [selectedCiudad]);
 
   useEffect(() => {
-    getMicrorrutas({ municipio: selectedCiudad || undefined })
+    getMicrorrutas({ municipio: selectedCiudad })
       .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
       .catch((err) =>
         console.error("Error cargando el total de microrrutas para los filtros:", err)
@@ -217,7 +244,7 @@ export default function AdminMicrorrutas() {
       localidadCod: selectedLocalidad || undefined,
       barrioCod: selectedBarrio || undefined,
       macrorrutaNumero: selectedMacrorruta || undefined,
-      municipio: selectedCiudad || undefined,
+      municipio: selectedCiudad,
     })
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
@@ -266,8 +293,9 @@ export default function AdminMicrorrutas() {
   // Cambiar de ciudad limpia localidad/barrio/macrorruta — esas opciones
   // pertenecen a la ciudad anterior y ya no tendría sentido dejarlas
   // seleccionadas (una localidad de Barranquilla no existe al ver Puerto
-  // Colombia, y viceversa).
-  const handleCiudadChange = (value: Municipio | "") => {
+  // Colombia, y viceversa). A diferencia de los demás filtros, ciudad no
+  // tiene un valor "vacío": siempre hay una activa.
+  const handleCiudadChange = (value: Municipio) => {
     setSelectedCiudad(value);
     setSelectedLocalidad("");
     setSelectedBarrio("");
@@ -350,7 +378,7 @@ export default function AdminMicrorrutas() {
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
         macrorrutaNumero: selectedMacrorruta || undefined,
-        municipio: selectedCiudad || undefined,
+        municipio: selectedCiudad,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -380,6 +408,34 @@ export default function AdminMicrorrutas() {
     }
   };
 
+  // Excel "espejo" de MicrorrutasTable.tsx (Nombre, Tipo, Fecha, Días,
+  // Trabajador, Barrio) — distinto del Excel SUI (formato oficial,
+  // columnas numeradas). Acción directa, sin dropdown: solo hace una cosa.
+  const handleDescargarTabla = async () => {
+    setDescargandoTabla(true);
+    try {
+      const blob = await exportarMicrorrutasTabla({
+        localidadCod: selectedLocalidad || undefined,
+        barrioCod: selectedBarrio || undefined,
+        macrorrutaNumero: selectedMacrorruta || undefined,
+        municipio: selectedCiudad,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `microrrutas-tabla-${new Date().toISOString().split("T")[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error descargando la tabla de microrrutas:", error);
+      alert("No se pudo descargar la tabla de microrrutas.");
+    } finally {
+      setDescargandoTabla(false);
+    }
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -398,73 +454,135 @@ export default function AdminMicrorrutas() {
               Generando {generandoTodo.actual} de {generandoTodo.total}...
             </span>
           )}
+
+          <div className="relative" ref={menuInformesRef}>
+            <button
+              type="button"
+              onClick={() => setMostrarMenuInformes((v) => !v)}
+              disabled={isBusy}
+              className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FaFileAlt /> Informes <FaChevronDown className="text-xs" />
+            </button>
+            {mostrarMenuInformes && (
+              <div className="absolute right-0 z-10 mt-2 w-72 rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarMenuInformes(false);
+                    handleDescargarExcel();
+                  }}
+                  disabled={isBusy || descargandoExcel}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+                  Excel SUI Microrrutas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarMenuInformes(false);
+                    handleGenerarReporteTodas();
+                  }}
+                  disabled={isBusy || generandoTodo !== null}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
+                  Informe SUI Microrrutas ({microrrutasList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarMenuInformes(false);
+                    handleGenerarMapaMacrorrutas();
+                  }}
+                  disabled={isBusy || generandoMapaMacrorrutas}
+                  title="Mapa con la división por macrorrutas (localidades con al menos una microrruta)"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generandoMapaMacrorrutas ? <FaSpinner className="animate-spin" /> : <FaMap />}
+                  Mapa de Macrorrutas
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
-            onClick={handleDescargarExcel}
-            disabled={isBusy || descargandoExcel}
+            onClick={() => setMostrarExportarCapas(true)}
+            disabled={isBusy}
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-            Generar Excel SUI Microrrutas
+            <FaLayerGroup /> Exportar Capas
           </button>
+
           <button
             type="button"
-            onClick={handleGenerarReporteTodas}
-            disabled={isBusy || generandoTodo !== null}
+            onClick={handleDescargarTabla}
+            disabled={isBusy || descargandoTabla}
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-            Generar Informe SUI Microrrutas ({microrrutasList.length})
-          </button>
-          <button
-            type="button"
-            onClick={handleGenerarMapaMacrorrutas}
-            disabled={isBusy || generandoMapaMacrorrutas}
-            title="Mapa con la división por macrorrutas (localidades con al menos una microrruta)"
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {generandoMapaMacrorrutas ? <FaSpinner className="animate-spin" /> : <FaMap />}
-            Mapa de Macrorrutas
+            {descargandoTabla ? <FaSpinner className="animate-spin" /> : <FaTable />}
+            Exportar Tabla
           </button>
         </div>
       </div>
 
+      {/* Ciudad — pestañas separadas del panel de filtros a propósito
+          (igual que en el mapa público, MapaServicios.tsx): los datos de
+          Barranquilla y Puerto Colombia nunca se mezclan, así que no es
+          "un filtro más" combinable con Localidad/Barrio/Macrorruta, sino
+          una sección completa aparte. Siempre hay una ciudad activa. */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => handleCiudadChange("BARRANQUILLA")}
+          disabled={isBusy}
+          className={`rounded-t-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            selectedCiudad === "BARRANQUILLA"
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+          }`}
+        >
+          📍 Barranquilla
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCiudadChange("PUERTO_COLOMBIA")}
+          disabled={isBusy}
+          className={`rounded-t-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            selectedCiudad === "PUERTO_COLOMBIA"
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+          }`}
+        >
+          ⚓ Puerto Colombia
+        </button>
+      </div>
+
       {/* Filtros */}
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Ciudad
-          </label>
-          <select
-            value={selectedCiudad}
-            disabled={isBusy}
-            onChange={(e) => handleCiudadChange(e.target.value as Municipio | "")}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
-          >
-            <option value="">Todas</option>
-            <option value="BARRANQUILLA">Barranquilla</option>
-            <option value="PUERTO_COLOMBIA">Puerto Colombia</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Localidad
-          </label>
-          <select
-            value={selectedLocalidad}
-            disabled={isBusy}
-            onChange={(e) => handleLocalidadChange(e.target.value)}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
-          >
-            <option value="">Todas</option>
-            {localidadesOrdenadas.map(({ item: loc, count }) => (
-              <option key={loc.identificador} value={loc.identificador}>
-                {loc.nombre}
-                {count > 0 ? ` (${count})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+        {selectedCiudad === "BARRANQUILLA" && (
+          <div>
+            <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+              Localidad
+            </label>
+            <select
+              value={selectedLocalidad}
+              disabled={isBusy}
+              onChange={(e) => handleLocalidadChange(e.target.value)}
+              className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+            >
+              <option value="">Todas</option>
+              {localidadesOrdenadas.map(({ item: loc, count }) => (
+                <option key={loc.identificador} value={loc.identificador}>
+                  {loc.nombre}
+                  {count > 0 ? ` (${count})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
             Barrio
@@ -507,29 +625,17 @@ export default function AdminMicrorrutas() {
         <button
           type="button"
           onClick={() => {
-            setSelectedCiudad("");
             setSelectedLocalidad("");
             setSelectedBarrio("");
             setSelectedMacrorruta("");
           }}
-          disabled={
-            isBusy ||
-            (!selectedCiudad && !selectedLocalidad && !selectedBarrio && !selectedMacrorruta)
-          }
+          disabled={isBusy || (!selectedLocalidad && !selectedBarrio && !selectedMacrorruta)}
           className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FaEraser /> Limpiar filtros
         </button>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMostrarExportarCapas(true)}
-            disabled={isBusy}
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <FaLayerGroup /> Exportar capas
-          </button>
           {drawing ? (
             <button
               onClick={() => setDrawing(false)}
@@ -607,7 +713,7 @@ export default function AdminMicrorrutas() {
             localidadCod: selectedLocalidad || undefined,
             barrioCod: selectedBarrio || undefined,
             macrorrutaNumero: selectedMacrorruta || undefined,
-            municipio: selectedCiudad || undefined,
+            municipio: selectedCiudad,
           }}
           onClose={() => setMostrarExportarCapas(false)}
         />
