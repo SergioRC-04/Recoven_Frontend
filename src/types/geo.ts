@@ -109,6 +109,11 @@ export interface ViasFilters {
   localidadCod?: string;
   barrioCod?: string;
   municipio?: Municipio;
+  // Vías cercanas al trazo de UNA microrruta puntual (ST_DWithin en el
+  // backend, misma tolerancia que la guía de calles) — independiente de
+  // los demás filtros. Number porque en el frontend siempre se tiene el
+  // id numérico de la microrruta ya seleccionada.
+  microrrutaId?: number;
 }
 
 // ============================================================

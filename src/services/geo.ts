@@ -39,6 +39,7 @@ export async function getViasGeoJson(
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (filters?.microrrutaId != null) params.append("microrrutaId", String(filters.microrrutaId));
   const url = `/geo-territorio/vias?${params.toString()}`;
   return recovenApi.get(url, false);
 }

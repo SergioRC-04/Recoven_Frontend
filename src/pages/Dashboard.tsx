@@ -11,14 +11,16 @@ import {
   FaClipboardList,
   FaRoute,
   FaRecycle,
+  FaUsers,
   FaBars,
   FaTimes,
 } from "react-icons/fa";
 import PqrsdfTable from "../components/admin/PqrsdfTable";
 import AdminMicrorrutas from "../components/admin/AdminMicrorrutas";
 import AdminRecyclers from "../components/admin/AdminRecyclers";
+import AdminUsuarios from "../components/admin/AdminUsuarios";
 
-type Tab = "leads" | "metrics" | "documents" | "pqrsdf" | "microrrutas" | "recyclers";
+type Tab = "leads" | "metrics" | "documents" | "pqrsdf" | "microrrutas" | "recyclers" | "usuarios";
 
 // Decodifica el payload de un JWT SIN verificarlo — no hace falta la clave
 // secreta para esto, solo para firmar/verificar. El backend ya incrusta
@@ -95,6 +97,7 @@ export default function Dashboard() {
     { id: "pqrsdf", label: "PQRSDF", icon: FaClipboardList },
     { id: "microrrutas", label: "Microrrutas", icon: FaRoute },
     { id: "recyclers", label: "Recicladores", icon: FaRecycle },
+    { id: "usuarios", label: "Usuarios", icon: FaUsers },
   ];
 
   // Selecciona la pestaña y, en mobile, cierra el drawer de una vez — en
@@ -199,6 +202,7 @@ export default function Dashboard() {
         {activeTab === "pqrsdf" && <PqrsdfTable />}
         {activeTab === "microrrutas" && <AdminMicrorrutas />}
         {activeTab === "recyclers" && <AdminRecyclers />}
+        {activeTab === "usuarios" && <AdminUsuarios />}
       </main>
     </div>
   );
