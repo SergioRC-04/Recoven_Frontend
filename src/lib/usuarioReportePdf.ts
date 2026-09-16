@@ -19,6 +19,7 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import GeoJSON from "ol/format/GeoJSON";
 import LineString from "ol/geom/LineString";
+import type Geometry from "ol/geom/Geometry";
 import Point from "ol/geom/Point";
 import { Style, Stroke, Fill } from "ol/style";
 import TextStyle from "ol/style/Text";
@@ -228,38 +229,106 @@ function estiloRuta(feature: OlFeature): Style[] {
   return estilos;
 }
 
-function estiloNombreVia(feature: FeatureLike): Style {
-  // Solo el segmento marcado por marcarUnaEtiquetaPorCalle (ver
-  // lib/viasEtiquetas.ts) dibuja el nombre — evita que una misma calle
-  // larga, partida en varios segmentos, repita su nombre una vez por
-  // segmento.
-  if (!feature.get(PROP_MOSTRAR_NOMBRE_VIA)) return new Style({});
-  // abrTexto (abreviado, p.ej. "CL 45") en vez de texto completo — ocupa
-  // menos espacio y se lee mejor a este tamaño de mapa. Si una vía no
-  // trae abreviatura, se cae al texto completo en vez de dejarla sin
-  // nombre.
-  const texto = String(feature.get("abrTexto") || feature.get("texto") || "").trim();
-  if (!texto) return new Style({});
-  return new Style({
-    text: new TextStyle({
-      text: texto,
-      font: "bold 14px sans-serif",
-      // Texto negro sólido sobre una placa blanca (backgroundFill), no
-      // con un halo/stroke fino — el stroke competía visualmente con el
-      // negro y lo hacía verse más gris que negro. La placa además
-      // resuelve lo mismo que el halo (legible sobre cualquier fondo del
-      // mapa) sin restarle solidez a la letra.
-      fill: new Fill({ color: "#000000" }),
-      backgroundFill: new Fill({ color: "#ffffff" }),
-      padding: [1, 2, 1, 2],
-      placement: "line",
-      // Desplazada por encima de la línea (en vez de centrada justo
-      // sobre ella) para que no tape el trazo de la vía debajo del
-      // texto — se lee mejor la calle y la línea al mismo tiempo.
-      offsetY: -8,
-      overflow: true,
-    }),
+// Fábrica en vez de función fija: las rutas largas/enredadas (más de
+// UMBRAL_DISTANCIA_LETRA_PEQUENA_KM, ver dibujarBloqueMicrorruta) traen
+// muchos más nombres de vía encimados en la misma área del mapa, así que
+// usan una letra más chica para que quepan sin taparse entre sí.
+function crearEstiloNombreVia(fontSizePx: number): (feature: FeatureLike) => Style {
+  const offsetY = -Math.round(fontSizePx * 0.57);
+  return (feature: FeatureLike): Style => {
+    // Solo el segmento marcado por marcarUnaEtiquetaPorCalle (ver
+    // lib/viasEtiquetas.ts) dibuja el nombre — evita que una misma calle
+    // larga, partida en varios segmentos, repita su nombre una vez por
+    // segmento.
+    if (!feature.get(PROP_MOSTRAR_NOMBRE_VIA)) return new Style({});
+    // abrTexto (abreviado, p.ej. "CL 45") en vez de texto completo —
+    // ocupa menos espacio y se lee mejor a este tamaño de mapa. Si una
+    // vía no trae abreviatura, se cae al texto completo en vez de
+    // dejarla sin nombre.
+    const texto = String(feature.get("abrTexto") || feature.get("texto") || "").trim();
+    if (!texto) return new Style({});
+    return new Style({
+      text: new TextStyle({
+        text: texto,
+        font: `bold ${fontSizePx}px sans-serif`,
+        // Texto negro sólido sobre una placa blanca (backgroundFill), no
+        // con un halo/stroke fino — el stroke competía visualmente con
+        // el negro y lo hacía verse más gris que negro. La placa además
+        // resuelve lo mismo que el halo (legible sobre cualquier fondo
+        // del mapa) sin restarle solidez a la letra.
+        fill: new Fill({ color: "#000000" }),
+        backgroundFill: new Fill({ color: "#ffffff" }),
+        padding: [1, 2, 1, 2],
+        placement: "line",
+        // Desplazada por encima de la línea (en vez de centrada justo
+        // sobre ella) para que no tape el trazo de la vía debajo del
+        // texto — se lee mejor la calle y la línea al mismo tiempo.
+        offsetY,
+        overflow: true,
+      }),
+    });
+  };
+}
+
+// Extrae los tramos de coordenadas de una geometría de vía, que en la BD
+// es MultiLineString (aunque a veces llegue como LineString) — cada
+// tramo se revisa por separado.
+function obtenerTramos(geometry: Geometry): number[][][] {
+  const tipo = geometry.getType();
+  if (tipo === "LineString") return [(geometry as LineString).getCoordinates()];
+  if (tipo === "MultiLineString") {
+    return (geometry as unknown as { getCoordinates(): number[][][] }).getCoordinates();
+  }
+  return [];
+}
+
+// Distingue una vía que la microrruta recorre A LO LARGO (varios metros
+// seguidos cerca del trazo) de una que solo la CRUZA de pasada (una
+// carrera que atraviesa la calle por la que va la ruta, por ejemplo) —
+// esta última entra y sale de la tolerancia casi de inmediato, sin una
+// racha larga de puntos cercanos. Solo se usa para las rutas largas (ver
+// dibujarBloqueMicrorruta): ahí es donde sobran cruces cortos compitiendo
+// por espacio con las calles que sí importan para la guía visual.
+const TOLERANCIA_A_LO_LARGO_M = 15;
+const RACHA_MINIMA_A_LO_LARGO_M = 50;
+const INTERVALO_MUESTREO_A_LO_LARGO_M = 8;
+
+function viaCorreALoLargoDeRuta(viaGeometry: Geometry, rutaGeom: LineString): boolean {
+  let mejorRachaM = 0;
+
+  obtenerTramos(viaGeometry).forEach((coords) => {
+    if (coords.length < 2) return;
+    const tramo = new LineString(coords);
+    const longitudTramo = tramo.getLength();
+    if (longitudTramo <= 0) return;
+
+    const numMuestras = Math.max(2, Math.ceil(longitudTramo / INTERVALO_MUESTREO_A_LO_LARGO_M));
+    let rachaActualM = 0;
+    let puntoCercanoAnterior: number[] | null = null;
+
+    for (let k = 0; k <= numMuestras; k++) {
+      const punto = tramo.getCoordinateAt(k / numMuestras);
+      const cercano = rutaGeom.getClosestPoint(punto);
+      const dx = punto[0] - cercano[0];
+      const dy = punto[1] - cercano[1];
+      const distancia = Math.sqrt(dx * dx + dy * dy);
+
+      if (distancia <= TOLERANCIA_A_LO_LARGO_M) {
+        if (puntoCercanoAnterior) {
+          const ddx = punto[0] - puntoCercanoAnterior[0];
+          const ddy = punto[1] - puntoCercanoAnterior[1];
+          rachaActualM += Math.sqrt(ddx * ddx + ddy * ddy);
+        }
+        puntoCercanoAnterior = punto;
+        if (rachaActualM > mejorRachaM) mejorRachaM = rachaActualM;
+      } else {
+        rachaActualM = 0;
+        puntoCercanoAnterior = null;
+      }
+    }
   });
+
+  return mejorRachaM >= RACHA_MINIMA_A_LO_LARGO_M;
 }
 
 function componerCanvasDesdeContainer(
@@ -298,7 +367,9 @@ async function renderizarMapaConNombresVias(
   geometry: LineStringGeoJson,
   viasGeoJson: GeoJsonFeatureCollection<ViaProperties> | null,
   widthPx: number,
-  heightPx: number
+  heightPx: number,
+  fontSizeNombreViaPx: number,
+  soloViasALoLargo: boolean
 ): Promise<string> {
   const container = document.createElement("div");
   container.style.position = "fixed";
@@ -335,11 +406,25 @@ async function renderizarMapaConNombresVias(
     const rutaExtent = rutaFeature.getGeometry()?.getExtent();
     const centroRuta =
       rutaExtent && !isEmpty(rutaExtent) ? (getCenter(rutaExtent) as [number, number]) : undefined;
-    const featuresLabel = viasGeoJson ? geoJsonFormat.readFeatures(viasGeoJson) : [];
+    let featuresLabel = viasGeoJson ? geoJsonFormat.readFeatures(viasGeoJson) : [];
+    // Solo para rutas largas (ver dibujarBloqueMicrorruta): las vías que
+    // solo cruzan el trazo de pasada (p. ej. una carrera que atraviesa la
+    // calle por la que va la ruta) no se etiquetan — con tantos nombres
+    // apretados en el mismo espacio, esos cruces cortos sobran y compiten
+    // por espacio con las calles que la ruta sí recorre. La línea gris de
+    // referencia de esas vías se sigue dibujando igual (viasLayer, más
+    // arriba) — esto solo afecta a cuáles llevan nombre.
+    if (soloViasALoLargo) {
+      const rutaGeom = rutaFeature.getGeometry() as LineString;
+      featuresLabel = featuresLabel.filter((f) => {
+        const g = f.getGeometry();
+        return g ? viaCorreALoLargoDeRuta(g, rutaGeom) : false;
+      });
+    }
     marcarUnaEtiquetaPorCalle(featuresLabel, centroRuta);
     const viasLabelLayer = new VectorLayer({
       source: new VectorSource({ features: featuresLabel }),
-      style: estiloNombreVia,
+      style: crearEstiloNombreVia(fontSizeNombreViaPx),
     });
 
     const osmLayer = new TileLayer({ source: new OSM() });
@@ -504,13 +589,20 @@ function dibujarTablaInfo(
 // completa quepa en el alto disponible — con un piso mínimo legible; si
 // aun así no cabe (guía inusualmente larga), se recorta al llegar al
 // límite inferior del bloque en vez de invadir el siguiente elemento.
+//
+// `columnas` (1 o 2): las rutas largas/con muchos giros (ver
+// dibujarBloqueMicrorruta) traen guías con muchos más pasos — repartidos
+// en 2 columnas en vez de 1, cada columna necesita menos líneas de alto,
+// lo que deja usar una letra más grande que si todo fuera en una sola
+// columna angosta y muy larga.
 function dibujarGuiaCompacta(
   pdf: jsPDF,
   x: number,
   y: number,
   width: number,
   height: number,
-  guiaCalles: GuiaCallesPaso[]
+  guiaCalles: GuiaCallesPaso[],
+  columnas: 1 | 2 = 1
 ): void {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(6.5);
@@ -526,21 +618,31 @@ function dibujarGuiaCompacta(
     return;
   }
 
+  const gapColumnas = 3;
+  const anchoColumna = columnas > 1 ? (width - gapColumnas * (columnas - 1)) / columnas : width;
+  const pasosPorColumna = Math.ceil(guiaCalles.length / columnas);
+
   const MIN_FONT = 3.6;
   let fontSize = 6.5;
   let lineHeight = 0;
-  let lineas: string[] = [];
+  let lineasPorColumna: string[][] = [];
 
   while (fontSize >= MIN_FONT) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(fontSize);
     lineHeight = fontSize * 0.42;
-    lineas = [];
-    for (const paso of guiaCalles) {
-      const texto = `${paso.orden}. ${paso.instruccion}`;
-      lineas.push(...(pdf.splitTextToSize(texto, width) as string[]));
+    lineasPorColumna = [];
+    for (let c = 0; c < columnas; c++) {
+      const pasosDeEstaColumna = guiaCalles.slice(c * pasosPorColumna, (c + 1) * pasosPorColumna);
+      const lineas: string[] = [];
+      pasosDeEstaColumna.forEach((paso) => {
+        const texto = `${paso.orden}. ${paso.instruccion}`;
+        lineas.push(...(pdf.splitTextToSize(texto, anchoColumna) as string[]));
+      });
+      lineasPorColumna.push(lineas);
     }
-    if (lineas.length * lineHeight <= areaHeight) break;
+    const maxLineas = Math.max(...lineasPorColumna.map((l) => l.length));
+    if (maxLineas * lineHeight <= areaHeight) break;
     fontSize -= 0.2;
   }
   if (fontSize < MIN_FONT) fontSize = MIN_FONT;
@@ -548,11 +650,14 @@ function dibujarGuiaCompacta(
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(fontSize);
   const maxY = y + height;
-  let cursorY = areaY + lineHeight * 0.75;
-  for (const linea of lineas) {
-    if (cursorY > maxY) break;
-    pdf.text(linea, x, cursorY);
-    cursorY += lineHeight;
+  for (let c = 0; c < columnas; c++) {
+    const colX = x + c * (anchoColumna + gapColumnas);
+    let cursorY = areaY + lineHeight * 0.75;
+    for (const linea of lineasPorColumna[c]) {
+      if (cursorY > maxY) break;
+      pdf.text(linea, colX, cursorY);
+      cursorY += lineHeight;
+    }
   }
 }
 
@@ -593,6 +698,18 @@ async function dibujarBloqueMicrorruta(
   pdf.setLineWidth(0.2);
   pdf.rect(x, y, width, height);
 
+  const rawDistancia = mr.longitudKm;
+  const distanciaKm =
+    typeof rawDistancia === "number" ? rawDistancia : parseFloat(String(rawDistancia)) || 0;
+  // Las rutas largas/enredadas traen muchos más nombres de vía y muchos
+  // más pasos de guía apretados en el mismo espacio de media hoja — letra
+  // más chica en el mapa y guía en 2 columnas, para que quepan sin
+  // encimarse ni forzar una letra ilegible.
+  const UMBRAL_DISTANCIA_RUTA_LARGA_KM = 2.5;
+  const esRutaLarga = distanciaKm > UMBRAL_DISTANCIA_RUTA_LARGA_KM;
+  const fontSizeNombreViaPx = esRutaLarga ? 10 : 14;
+  const columnasGuia: 1 | 2 = esRutaLarga ? 2 : 1;
+
   const anchoMapa = width * 0.56 - GAP / 2;
   const altoMapa = height;
   const colDerechaX = x + anchoMapa + GAP;
@@ -602,7 +719,14 @@ async function dibujarBloqueMicrorruta(
   const widthPx = Math.round((anchoMapa / 25.4) * DPI);
   const heightPx = Math.round((altoMapa / 25.4) * DPI);
 
-  const mapaDataUrl = await renderizarMapaConNombresVias(geometry, viasGeoJson, widthPx, heightPx);
+  const mapaDataUrl = await renderizarMapaConNombresVias(
+    geometry,
+    viasGeoJson,
+    widthPx,
+    heightPx,
+    fontSizeNombreViaPx,
+    esRutaLarga
+  );
 
   pdf.addImage(mapaDataUrl, "JPEG", x, y, anchoMapa, altoMapa);
   pdf.setDrawColor("#000000");
@@ -610,9 +734,6 @@ async function dibujarBloqueMicrorruta(
   pdf.rect(x, y, anchoMapa, altoMapa);
   dibujarNorte(pdf, x + 5, y + 5);
 
-  const rawDistancia = mr.longitudKm;
-  const distanciaKm =
-    typeof rawDistancia === "number" ? rawDistancia : parseFloat(String(rawDistancia)) || 0;
   const ubicacion = resolverUbicacion(mr);
 
   let cursorY = dibujarLogo(pdf, colDerechaX, y, colDerechaAncho, 14, logoInfo) + GAP;
@@ -641,7 +762,7 @@ async function dibujarBloqueMicrorruta(
 
   const alturaGuia = y + height - cursorY;
   if (alturaGuia > 3) {
-    dibujarGuiaCompacta(pdf, colDerechaX, cursorY, colDerechaAncho, alturaGuia, guiaCalles);
+    dibujarGuiaCompacta(pdf, colDerechaX, cursorY, colDerechaAncho, alturaGuia, guiaCalles, columnasGuia);
   }
 }
 
