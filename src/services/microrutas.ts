@@ -40,6 +40,7 @@ export async function getMicrorrutas(filters?: MicrorrutasFilters): Promise<Micr
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (filters?.estado) params.append("estado", filters.estado);
   const query = params.toString();
   const raw = await recovenApi.get<unknown>(`/microrrutas${query ? `?${query}` : ""}`, false);
   return normalizeMicrorrutasGeoJson(raw);

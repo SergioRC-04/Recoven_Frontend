@@ -34,6 +34,8 @@ import type {
 import type { Recycler } from "../../types/recycler";
 import {
   toMicrorrutaFormValues,
+  ESTADO_MICRORRUTA_LABELS,
+  type EstadoMicrorruta,
   type MicrorrutasGeoJson,
   type MicrorrutaProperties,
   type LineStringGeoJson,
@@ -70,6 +72,9 @@ export default function AdminMicrorrutas() {
   // MAYOR parte del trazo de cada ruta (ver macrorrutaNumero en
   // types/microrruta.ts), no por qué barrios toca.
   const [selectedMacrorruta, setSelectedMacrorruta] = useState("");
+  // Por defecto solo las ACTIVA; las INACTIVA (todos sus recicladores
+  // desvinculados) solo se ven eligiéndolas aquí.
+  const [selectedEstado, setSelectedEstado] = useState<EstadoMicrorruta>("ACTIVA");
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [macrorrutas, setMacrorrutas] = useState<MacrorrutaResumen[]>([]);
 
@@ -245,6 +250,7 @@ export default function AdminMicrorrutas() {
       barrioCod: selectedBarrio || undefined,
       macrorrutaNumero: selectedMacrorruta || undefined,
       municipio: selectedCiudad,
+      estado: selectedEstado,
     })
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
@@ -259,7 +265,14 @@ export default function AdminMicrorrutas() {
     return () => {
       setMicrorrutasGeo(null);
     };
-  }, [selectedCiudad, selectedLocalidad, selectedBarrio, selectedMacrorruta, refreshKey]);
+  }, [
+    selectedCiudad,
+    selectedLocalidad,
+    selectedBarrio,
+    selectedMacrorruta,
+    selectedEstado,
+    refreshKey,
+  ]);
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
@@ -622,17 +635,44 @@ export default function AdminMicrorrutas() {
           </select>
         </div>
 
+        <div>
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Estado
+          </label>
+          <select
+            value={selectedEstado}
+            disabled={isBusy}
+            onChange={(e) => setSelectedEstado(e.target.value as EstadoMicrorruta)}
+            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
+          >
+            {(Object.keys(ESTADO_MICRORRUTA_LABELS) as EstadoMicrorruta[]).map((estado) => (
+              <option key={estado} value={estado}>
+                {ESTADO_MICRORRUTA_LABELS[estado]}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           type="button"
           onClick={() => {
             setSelectedLocalidad("");
             setSelectedBarrio("");
             setSelectedMacrorruta("");
+            setSelectedEstado("ACTIVA");
           }}
-          disabled={isBusy || (!selectedLocalidad && !selectedBarrio && !selectedMacrorruta)}
-          className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={
+            isBusy ||
+            (!selectedLocalidad &&
+              !selectedBarrio &&
+              !selectedMacrorruta &&
+              selectedEstado === "ACTIVA")
+          }
+          title="Limpiar filtros"
+          aria-label="Limpiar filtros"
+          className="inline-flex items-center justify-center rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <FaEraser /> Limpiar filtros
+          <FaEraser />
         </button>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">

@@ -71,10 +71,16 @@ export default function AdminRecyclers() {
   // selects, tal como se pidió. "" o "todos" significa "sin filtrar por
   // esta dimensión".
   // El filtro más amplio de los seis, y el primero visualmente — mismo
-  // concepto que en AdminMicrorrutas.tsx: Barranquilla se divide en
-  // localidades/barrios; Puerto Colombia hoy es una sola "localidad" que
-  // cubre todo el municipio.
-  const [ciudadFiltro, setCiudadFiltro] = useState<Municipio | "">("");
+  // concepto Y mismo estilo (pestañas, siempre una activa, sin "Todas")
+  // que en AdminMicrorrutas.tsx: Barranquilla se divide en localidades/
+  // barrios; Puerto Colombia hoy es una sola "localidad" que cubre todo
+  // el municipio, así que combinar ambas ciudades no aporta una vista
+  // coherente igual que allá.
+  // "SIN_CIUDAD": un reciclador no tiene ciudad propia, se deduce de sus
+  // barrios (Recycler -> RecyclerBarrio -> Barrio -> Localidad.municipio),
+  // así que los que no tienen ningún barrio no caen en ninguna ciudad y
+  // se ven en esta pestaña aparte.
+  const [ciudadFiltro, setCiudadFiltro] = useState<Municipio | "SIN_CIUDAD">("BARRANQUILLA");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("activos");
   const [rutasFiltro, setRutasFiltro] = useState<RutasFiltro>("");
   const [clasificacionFiltro, setClasificacionFiltro] = useState<Clasificacion | "">("");
@@ -114,7 +120,7 @@ export default function AdminRecyclers() {
   // Colombia y viceversa. Mismo criterio que handleLocalidadChange en
   // AdminMicrorrutas.tsx: la derivación es síncrona, así que vive en el
   // handler que la origina, no en un useEffect.
-  const handleCiudadChange = (value: Municipio | "") => {
+  const handleCiudadChange = (value: Municipio | "SIN_CIUDAD") => {
     setCiudadFiltro(value);
     setBarrioFiltro("");
   };
@@ -127,9 +133,12 @@ export default function AdminRecyclers() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  // Barrios para el filtro — se recarga al cambiar de ciudad.
+  // Barrios para el filtro — se recarga al cambiar de ciudad. En
+  // "SIN_CIUDAD" no se pide nada: por definición esos recicladores no
+  // tienen barrios, y el select de barrio se deshabilita más abajo.
   useEffect(() => {
-    getBarriosList(undefined, ciudadFiltro || undefined)
+    if (ciudadFiltro === "SIN_CIUDAD") return;
+    getBarriosList(undefined, ciudadFiltro)
       .then((data) => {
         const ordenados = [...data].sort((a, b) =>
           a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
@@ -151,7 +160,7 @@ export default function AdminRecyclers() {
       clasificacion: clasificacionFiltro || undefined,
       censado: censoFiltro === "todos" ? undefined : censoFiltro === "censados",
       barrioId: barrioFiltro || undefined,
-      municipio: ciudadFiltro || undefined,
+      municipio: ciudadFiltro,
       search: search || undefined,
     })
       .then((data) => {
@@ -418,24 +427,55 @@ export default function AdminRecyclers() {
         />
       </div>
 
-      {/* Filtros — seis dimensiones independientes (select) + búsqueda de
+      {/* Ciudad — pestañas separadas del panel de filtros, mismo criterio
+          y mismo estilo que en AdminMicrorrutas.tsx (y que el mapa
+          público, MapaServicios.tsx): los datos de Barranquilla y Puerto
+          Colombia nunca se mezclan, así que no es "un filtro más"
+          combinable con los demás, sino una sección completa aparte.
+          Siempre hay una ciudad activa. */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => handleCiudadChange("BARRANQUILLA")}
+          disabled={loading}
+          className={`rounded-t-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            ciudadFiltro === "BARRANQUILLA"
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+          }`}
+        >
+          📍 Barranquilla
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCiudadChange("PUERTO_COLOMBIA")}
+          disabled={loading}
+          className={`rounded-t-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            ciudadFiltro === "PUERTO_COLOMBIA"
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+          }`}
+        >
+          ⚓ Puerto Colombia
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCiudadChange("SIN_CIUDAD")}
+          disabled={loading}
+          title="Recicladores sin ningún barrio asignado"
+          className={`rounded-t-xl px-6 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            ciudadFiltro === "SIN_CIUDAD"
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+          }`}
+        >
+          ❔ Sin ciudad
+        </button>
+      </div>
+
+      {/* Filtros — cinco dimensiones independientes (select) + búsqueda de
           texto libre, en vez de las antiguas pestañas excluyentes. */}
       <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Ciudad
-          </label>
-          <select
-            value={ciudadFiltro}
-            onChange={(e) => handleCiudadChange(e.target.value as Municipio | "")}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          >
-            <option value="">Todas</option>
-            <option value="BARRANQUILLA">Barranquilla</option>
-            <option value="PUERTO_COLOMBIA">Puerto Colombia</option>
-          </select>
-        </div>
-
         <div>
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
             Estado
@@ -505,11 +545,11 @@ export default function AdminRecyclers() {
           <select
             value={barrioFiltro}
             onChange={(e) => setBarrioFiltro(e.target.value)}
-            disabled={barrios.length === 0}
+            disabled={ciudadFiltro === "SIN_CIUDAD" || barrios.length === 0}
             className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
           >
             <option value="">Todos</option>
-            {barrios.map((b) => (
+            {(ciudadFiltro === "SIN_CIUDAD" ? [] : barrios).map((b) => (
               <option key={b.identificador} value={b.identificador}>
                 {b.nombre_barrio}
               </option>
@@ -536,9 +576,10 @@ export default function AdminRecyclers() {
           onClick={handleLimpiarFiltros}
           disabled={!hayFiltrosActivos}
           title="Limpiar filtros"
-          className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Limpiar filtros"
+          className="inline-flex items-center justify-center rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <FaEraser /> Limpiar filtros
+          <FaEraser />
         </button>
       </div>
 

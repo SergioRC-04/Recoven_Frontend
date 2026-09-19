@@ -123,8 +123,9 @@ export interface RecyclersFilters {
   // del resto de la app).
   barrioId?: string;
   // "BARRANQUILLA" | "PUERTO_COLOMBIA" — independiente de barrioId,
-  // combinable con el resto.
-  municipio?: Municipio;
+  // combinable con el resto. "SIN_CIUDAD" = recicladores sin ningún barrio
+  // asignado (la ciudad de un reciclador se deduce de sus barrios).
+  municipio?: Municipio | "SIN_CIUDAD";
   // Coincide contra nombre, cédula, nombre de barrio asignado y nombre de
   // ruta asignada — no solo nombre/cédula como antes.
   search?: string;

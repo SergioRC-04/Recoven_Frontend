@@ -95,19 +95,15 @@ export const ESTACION_TRANSFERENCIA_LABELS: Record<number, string> = {
   2: "No",
 };
 
-// Estado de la microrruta. Solo se ha confirmado "BORRADOR" en respuestas
-// reales del backend hasta ahora — se deja como string (no como union
-// estricto) porque no sabemos el listado completo de valores posibles.
-// Si el backend confirma más estados (p. ej. "PUBLICADO", "ACTIVO"),
-// conviene volverlo un union type y añadir sus labels/colores aquí.
-export type EstadoMicrorruta = string;
+// Estado de la microrruta. ACTIVA se muestra en mapa, tablas, reportes y
+// exportaciones; INACTIVA (todos sus recicladores desvinculados) se oculta
+// de todo eso salvo que se pida explícitamente en el filtro de Estado del
+// admin. Lo mantiene el backend (RecyclersService) al desvincular/reactivar.
+export type EstadoMicrorruta = "ACTIVA" | "INACTIVA";
 
-export const ESTADO_MICRORRUTA_LABELS: Record<string, string> = {
-  BORRADOR: "Borrador",
-};
-
-export const ESTADO_MICRORRUTA_COLORS: Record<string, string> = {
-  BORRADOR: "bg-gray-100 text-gray-600",
+export const ESTADO_MICRORRUTA_LABELS: Record<EstadoMicrorruta, string> = {
+  ACTIVA: "Activas",
+  INACTIVA: "Inactivas",
 };
 
 // Días de la semana para el selector de "Días Frecuencia" (formato "1-3-5").
@@ -260,7 +256,7 @@ export interface MicrorrutaProperties {
 //   "dir_fin":"calle 54 #33","hora_fin":"20:00",
 //   "dist_pavimentada":0.5,"dist_no_pavimentada":0,
 //   "frecuencia":4,"dias_frecuencia":"1-3-5",
-//   "estacion_transferencia":2,"tipo_barrido":1,"estado":"BORRADOR",
+//   "estacion_transferencia":2,"tipo_barrido":1,"estado":"ACTIVA",
 //   "macrorruta_numero":"10000003","localidad_dominante_nombre":"Suroccidente",
 //   "geojson":{"type":"LineString","coordinates":[[lon,lat],[lon,lat]]},
 //   "longitud_calculada_km":"0.29",
@@ -289,7 +285,7 @@ export interface MicrorrutaApiItem {
   dias_frecuencia: string;
   estacion_transferencia: number;
   tipo_barrido: number;
-  estado: string;
+  estado: EstadoMicrorruta;
   geojson: LineStringGeoJson | null;
   longitud_calculada_km: string | number | null;
   barrios: BarrioDeMicrorruta[];
@@ -317,6 +313,8 @@ export interface MicrorrutasFilters {
   // "BARRANQUILLA" | "PUERTO_COLOMBIA" — el filtro más amplio de los
   // cuatro, independiente de los demás y combinable con ellos.
   municipio?: Municipio;
+  // Por defecto (sin este campo) el backend devuelve solo las ACTIVA.
+  estado?: EstadoMicrorruta;
 }
 
 // Una fila del selector de macrorrutas del admin — solo las que
