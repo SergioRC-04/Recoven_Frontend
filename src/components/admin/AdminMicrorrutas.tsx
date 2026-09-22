@@ -12,6 +12,7 @@ import {
   FaFileAlt,
   FaChevronDown,
   FaTable,
+  FaSearch,
 } from "react-icons/fa";
 import { getLocalidadesList, getBarriosGeoJson, getViasGeoJson } from "../../services/geo";
 import {
@@ -119,6 +120,9 @@ export default function AdminMicrorrutas() {
 
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
+  // Búsqueda por nombre del reciclador asignado — filtro en memoria, ver
+  // microrrutasGeoFiltrado más abajo.
+  const [searchTrabajador, setSearchTrabajador] = useState("");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -276,7 +280,33 @@ export default function AdminMicrorrutas() {
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
-  const microrrutasList = microrrutasGeo?.features?.map((f) => f.properties) ?? [];
+  const trabajadorPorMicrorrutaId = new Map<number, string>();
+  recyclers.forEach((r) => {
+    r.microrrutas.forEach((m) => {
+      if (!trabajadorPorMicrorrutaId.has(m.id)) {
+        trabajadorPorMicrorrutaId.set(m.id, r.nombreCompleto);
+      }
+    });
+  });
+
+  // Búsqueda por nombre del reciclador — filtro en memoria (no viaja al
+  // backend, no hace falta: recyclers ya se cargó completo al montar) que
+  // se aplica ANTES de derivar microrrutasList, así el mapa y la tabla
+  // muestran exactamente el mismo subconjunto de rutas.
+  const busquedaTrabajadorLower = searchTrabajador.trim().toLowerCase();
+  const microrrutasGeoFiltrado =
+    !microrrutasGeo || !busquedaTrabajadorLower
+      ? microrrutasGeo
+      : {
+          type: "FeatureCollection" as const,
+          features: microrrutasGeo.features.filter((f) =>
+            (trabajadorPorMicrorrutaId.get(f.properties.id) ?? "")
+              .toLowerCase()
+              .includes(busquedaTrabajadorLower)
+          ),
+        };
+
+  const microrrutasList = microrrutasGeoFiltrado?.features?.map((f) => f.properties) ?? [];
 
   const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
   const localidadesOrdenadas = ordenarPorConteo(
@@ -291,15 +321,6 @@ export default function AdminMicrorrutas() {
     (b) => b.identificador,
     (b) => b.nombre_barrio
   );
-
-  const trabajadorPorMicrorrutaId = new Map<number, string>();
-  recyclers.forEach((r) => {
-    r.microrrutas.forEach((m) => {
-      if (!trabajadorPorMicrorrutaId.has(m.id)) {
-        trabajadorPorMicrorrutaId.set(m.id, r.nombreCompleto);
-      }
-    });
-  });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -660,12 +681,14 @@ export default function AdminMicrorrutas() {
             setSelectedBarrio("");
             setSelectedMacrorruta("");
             setSelectedEstado("ACTIVA");
+            setSearchTrabajador("");
           }}
           disabled={
             isBusy ||
             (!selectedLocalidad &&
               !selectedBarrio &&
               !selectedMacrorruta &&
+              !searchTrabajador &&
               selectedEstado === "ACTIVA")
           }
           title="Limpiar filtros"
@@ -707,7 +730,7 @@ export default function AdminMicrorrutas() {
         barrioCod={selectedBarrio || undefined}
         barriosGeoJson={barriosGeo}
         viasGeoJson={viasGeo}
-        microrrutasGeoJson={microrrutasGeo}
+        microrrutasGeoJson={microrrutasGeoFiltrado}
         pendingGeojson={formModalState?.mode === "create" ? formModalState.geojson : null}
         drawing={drawing}
         editingGeometriaId={editingGeometriaId}
@@ -720,6 +743,22 @@ export default function AdminMicrorrutas() {
         onSelectMicrorruta={setMicrorrutaSeleccionadaId}
         selectedMicrorrutaId={microrrutaSeleccionadaId}
       />
+
+      <div className="flex justify-end">
+        <div className="relative w-full max-w-xs">
+          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
+            Trabajador
+          </label>
+          <FaSearch className="absolute top-1/2 left-3 mt-0.5 -translate-y-1/2 text-xs text-gray-400" />
+          <input
+            type="text"
+            value={searchTrabajador}
+            onChange={(e) => setSearchTrabajador(e.target.value)}
+            placeholder="Nombre del reciclador..."
+            className="mt-1 w-full rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+          />
+        </div>
+      </div>
 
       {loading ? (
         <div className="py-10 text-center text-gray-400">Cargando microrrutas...</div>

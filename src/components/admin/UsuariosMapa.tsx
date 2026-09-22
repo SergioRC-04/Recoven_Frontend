@@ -21,10 +21,12 @@ import type { FeatureLike } from "ol/Feature";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import Circle from "ol/geom/Circle";
+import LineStringGeom from "ol/geom/LineString";
+import type OlLineString from "ol/geom/LineString";
 import { fromLonLat } from "ol/proj";
 import { Style, Stroke, Fill, Circle as CircleStyle } from "ol/style";
 import TextStyle from "ol/style/Text";
-import { isEmpty } from "ol/extent";
+import { isEmpty, intersects as extentsIntersects } from "ol/extent";
 import { FaLocationArrow, FaExclamationTriangle } from "react-icons/fa";
 import type { MicrorrutasGeoJson } from "../../types/microrruta";
 import type { GeoJsonFeatureCollection, BarrioProperties, ViaProperties } from "../../types/geo";
@@ -125,6 +127,105 @@ function estiloNombreVia(feature: FeatureLike, resolution: number): Style {
   });
 }
 
+// Línea amarilla gruesa sobre el tramo que dos o más microrrutas recorren
+// en común — por encima del trazo azul normal, para que resalte.
+const TRAMO_COMPARTIDO_STYLE = new Style({
+  stroke: new Stroke({ color: "#facc15", width: 6 }),
+  zIndex: 10,
+});
+
+// Tolerancia (metros, EPSG:3857) para considerar que un punto de una ruta
+// "está sobre" la otra — no puede ser tan chica que el trazo a mano de dos
+// personas distintas por la misma calle no encaje, ni tan grande que
+// confunda dos calles paralelas del mismo bloque.
+const TOLERANCIA_TRAMO_COMPARTIDO_M = 15;
+
+// Longitud mínima (metros) de una racha de puntos cercanos para contarla
+// como un tramo de verdad recorrido en común, no un simple cruce de
+// pasada en una esquina — un cruce perpendicular solo entra y sale de la
+// tolerancia en unos pocos metros; un tramo compartido real (misma calle
+// por varias cuadras) la supera de sobra. Mismo criterio y mismo valor
+// que RACHA_MINIMA_A_LO_LARGO_M en lib/usuarioReportePdf.ts, para "recorre
+// junto a" vs. "solo cruza".
+const MIN_TRAMO_COMPARTIDO_M = 50;
+
+// Cada cuántos metros se muestrea una ruta para buscar tramos compartidos.
+const INTERVALO_MUESTREO_TRAMO_M = 10;
+
+// Recorre `lineaA` muestreada y separa los tramos donde queda dentro de
+// TOLERANCIA_TRAMO_COMPARTIDO_M de `lineaB` — solo se quedan las rachas
+// que superan MIN_TRAMO_COMPARTIDO_M. Cada tramo devuelto son las propias
+// coordenadas de A en ese rango (ya sirven para dibujar: ahí es
+// literalmente donde pasa la calle compartida).
+function calcularTramosCompartidos(
+  lineaA: OlLineString,
+  lineaB: OlLineString
+): [number, number][][] {
+  const longitud = lineaA.getLength();
+  if (longitud <= 0) return [];
+
+  const numMuestras = Math.max(1, Math.round(longitud / INTERVALO_MUESTREO_TRAMO_M));
+  const tramos: [number, number][][] = [];
+  let rachaActual: [number, number][] = [];
+
+  const cerrarRacha = () => {
+    if (rachaActual.length >= 2) {
+      let largo = 0;
+      for (let i = 1; i < rachaActual.length; i++) {
+        const dx = rachaActual[i][0] - rachaActual[i - 1][0];
+        const dy = rachaActual[i][1] - rachaActual[i - 1][1];
+        largo += Math.sqrt(dx * dx + dy * dy);
+      }
+      if (largo >= MIN_TRAMO_COMPARTIDO_M) tramos.push(rachaActual);
+    }
+    rachaActual = [];
+  };
+
+  for (let k = 0; k <= numMuestras; k++) {
+    const punto = lineaA.getCoordinateAt(k / numMuestras) as [number, number];
+    const cercano = lineaB.getClosestPoint(punto);
+    const dx = punto[0] - cercano[0];
+    const dy = punto[1] - cercano[1];
+    const distancia = Math.sqrt(dx * dx + dy * dy);
+
+    if (distancia <= TOLERANCIA_TRAMO_COMPARTIDO_M) {
+      rachaActual.push(punto);
+    } else {
+      cerrarRacha();
+    }
+  }
+  cerrarRacha();
+
+  return tramos;
+}
+
+// Todos los tramos donde dos microrrutas DISTINTAS (mismo id = no cuenta)
+// recorren de verdad el mismo camino — no un cruce puntual en una
+// esquina. Se filtra primero por extent (bounding box) de cada par de
+// rutas antes de muestrear — evita comparar rutas que ni siquiera están
+// cerca una de la otra.
+function calcularTramosDeCruce(features: Feature[]): [number, number][][] {
+  const lineas = features
+    .map((f) => ({
+      id: f.get("id") as number,
+      geom: f.getGeometry() as OlLineString | undefined,
+    }))
+    .filter((l): l is { id: number; geom: OlLineString } => !!l.geom);
+
+  const tramos: [number, number][][] = [];
+
+  for (let i = 0; i < lineas.length; i++) {
+    for (let j = i + 1; j < lineas.length; j++) {
+      if (lineas[i].id === lineas[j].id) continue;
+      if (!extentsIntersects(lineas[i].geom.getExtent(), lineas[j].geom.getExtent())) continue;
+
+      tramos.push(...calcularTramosCompartidos(lineas[i].geom, lineas[j].geom));
+    }
+  }
+
+  return tramos;
+}
+
 const UBICACION_STYLE = new Style({
   image: new CircleStyle({
     radius: 7,
@@ -172,6 +273,7 @@ export default function UsuariosMapa({
   const viasLayerRef = useRef<VectorLayer | null>(null);
   const viasLabelLayerRef = useRef<VectorLayer | null>(null);
   const microrrutasLayerRef = useRef<VectorLayer | null>(null);
+  const crucesLayerRef = useRef<VectorLayer | null>(null);
   const ubicacionLayerRef = useRef<VectorLayer | null>(null);
   const ubicacionFeatureRef = useRef<Feature<Point> | null>(null);
   const ubicacionPrecisionFeatureRef = useRef<Feature<Circle> | null>(null);
@@ -209,6 +311,13 @@ export default function UsuariosMapa({
       style: estiloNombreVia,
       zIndex: 4,
     });
+    // Tramos que 2+ microrrutas recorren en común — por encima del trazo
+    // pero por debajo de los nombres de vía, para no competir con el texto.
+    const crucesLayer = new VectorLayer({
+      source: new VectorSource(),
+      style: TRAMO_COMPARTIDO_STYLE,
+      zIndex: 3.5,
+    });
     const ubicacionLayer = new VectorLayer({
       source: new VectorSource(),
       zIndex: 5,
@@ -218,11 +327,20 @@ export default function UsuariosMapa({
     viasLayerRef.current = viasLayer;
     viasLabelLayerRef.current = viasLabelLayer;
     microrrutasLayerRef.current = microrrutasLayer;
+    crucesLayerRef.current = crucesLayer;
     ubicacionLayerRef.current = ubicacionLayer;
 
     const map = new Map({
       target: mapContainer.current,
-      layers: [baseLayer, viasLayer, barriosLayer, microrrutasLayer, viasLabelLayer, ubicacionLayer],
+      layers: [
+        baseLayer,
+        viasLayer,
+        barriosLayer,
+        microrrutasLayer,
+        crucesLayer,
+        viasLabelLayer,
+        ubicacionLayer,
+      ],
       view: new View({ center: CENTER_BARRANQUILLA, zoom: 12 }),
     });
 
@@ -336,17 +454,28 @@ export default function UsuariosMapa({
   // ubicación activo, igual criterio que MicrorrutaMapEditor).
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
+    const crucesLayer = crucesLayerRef.current;
     const map = mapRef.current;
     if (!microrrutasLayer || !microrrutasGeoJson) return;
 
     try {
-      const source = new VectorSource({
-        features: new GeoJSON({
-          dataProjection: DATA_PROJ,
-          featureProjection: VIEW_PROJ,
-        }).readFeatures(microrrutasGeoJson),
-      });
+      const features = new GeoJSON({
+        dataProjection: DATA_PROJ,
+        featureProjection: VIEW_PROJ,
+      }).readFeatures(microrrutasGeoJson);
+      const source = new VectorSource({ features });
       microrrutasLayer.setSource(source);
+
+      if (crucesLayer) {
+        const tramosDeCruce = calcularTramosDeCruce(features);
+        crucesLayer.setSource(
+          new VectorSource({
+            features: tramosDeCruce.map(
+              (coords) => new Feature({ geometry: new LineStringGeom(coords) })
+            ),
+          })
+        );
+      }
 
       if (map && !localidadCod && !barrioCod) {
         const extent = source.getExtent();
