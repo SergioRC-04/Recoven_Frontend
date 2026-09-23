@@ -24,6 +24,7 @@ import {
 } from "../../services/microrutas";
 import { getRecyclers } from "../../services/recyclers";
 import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
+import { puntoEnGeometria } from "../../lib/puntoEnPoligono";
 import type {
   Localidad,
   Barrio,
@@ -54,9 +55,32 @@ import {
 import { generarReporteMacrorrutas } from "../../lib/macrorrutaReportePdf";
 
 type FormModalState =
-  | { mode: "create"; geojson: LineStringGeoJson; distanciaTotalKm: number }
+  | {
+      mode: "create";
+      geojson: LineStringGeoJson;
+      distanciaTotalKm: number;
+      // Ver sugerirNombreMicrorruta más abajo — undefined si no se pudo
+      // determinar la localidad (el campo simplemente queda vacío, como
+      // antes de que existiera esta sugerencia).
+      nombreSugerido?: string;
+    }
   | { mode: "edit"; microrruta: MicrorrutaProperties }
   | null;
+
+// Prefijo de nombre por localidad — NO es literalmente Localidades.nombre
+// (p. ej. "02" es "Norte - centro histórico" en la BD, pero las
+// microrrutas ya existentes usan "NorteCentro"; "PC-000" es "Puerto
+// Colombia" en la BD, pero se usa "Pto.Colombia") — es una convención
+// tipeada a mano históricamente, así que se fija aquí a propósito en vez
+// de derivarla del nombre real de la localidad.
+const PREFIJO_POR_LOCALIDAD: Record<string, string> = {
+  "01": "Riomar",
+  "02": "NorteCentro",
+  "03": "Suroccidente",
+  "04": "Suroriente",
+  "05": "Metropolitana",
+  "PC-000": "Pto.Colombia",
+};
 
 export default function AdminMicrorrutas() {
   // El filtro más amplio de todos — pero a diferencia de
@@ -384,9 +408,72 @@ export default function AdminMicrorrutas() {
     setSelectedBarrio(""); // limpiar barrio al cambiar localidad
   };
 
-  const handleDrawEnd = (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
+  // Recomienda un nombre para la ruta recién dibujada: <prefijo de la
+  // localidad>-<siguiente número, con 3 cifras>. La localidad se resuelve
+  // así, en orden:
+  //   1. Si hay un filtro de Localidad activo, se usa ese directamente
+  //      (el caso normal: el admin filtra a la zona antes de dibujar).
+  //   2. Si solo hay un filtro de Barrio, se resuelve la localidad de ese
+  //      barrio.
+  //   3. Si la ciudad activa es Puerto Colombia, esa siempre es una sola
+  //      localidad (PC-000, ver Municipio en schema.prisma) — no hace
+  //      falta adivinar nada.
+  //   4. Si no hay ningún filtro, se adivina geométricamente: se prueba
+  //      el punto medio del trazo contra los polígonos de barrio ya
+  //      cargados (ver lib/puntoEnPoligono.ts) — aproximado (solo un
+  //      punto, solo el anillo exterior), suficiente para una
+  //      RECOMENDACIÓN que el usuario puede editar, no para el cálculo
+  //      autoritativo que hace el backend con PostGIS después de crear.
+  // Si no se puede resolver la localidad, no se sugiere nada (el campo
+  // queda vacío, como antes de que existiera esta función).
+  const sugerirNombreMicrorruta = async (
+    geojson: LineStringGeoJson
+  ): Promise<string | undefined> => {
+    let localidadCod: string | undefined;
+
+    if (selectedCiudad === "PUERTO_COLOMBIA") {
+      localidadCod = "PC-000";
+    } else if (selectedLocalidad) {
+      localidadCod = selectedLocalidad;
+    } else if (selectedBarrio && todosLosBarriosGeo) {
+      localidadCod = todosLosBarriosGeo.features.find(
+        (f) => f.properties.identificador === selectedBarrio
+      )?.properties.localidadCod;
+    } else if (todosLosBarriosGeo) {
+      const coords = geojson.coordinates;
+      const puntoMedio = coords[Math.floor(coords.length / 2)];
+      const punto: [number, number] = [puntoMedio[0], puntoMedio[1]];
+      localidadCod = todosLosBarriosGeo.features.find((f) =>
+        puntoEnGeometria(punto, f.geometry)
+      )?.properties.localidadCod;
+    }
+
+    const prefijo = localidadCod ? PREFIJO_POR_LOCALIDAD[localidadCod] : undefined;
+    if (!prefijo) return undefined;
+
+    try {
+      // estado: "TODAS" — el nombre es único sin importar si la ruta
+      // quedó inactiva, así que también hay que evitar chocar con esos
+      // nombres al calcular el siguiente número.
+      const geo = await getMicrorrutas({ municipio: selectedCiudad, estado: "TODAS" });
+      const prefijoEscapado = prefijo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const patron = new RegExp(`^${prefijoEscapado}-(\\d+)\\s*$`);
+      let maxNumero = 0;
+      geo.features.forEach((f) => {
+        const match = patron.exec(f.properties.nombre);
+        if (match) maxNumero = Math.max(maxNumero, parseInt(match[1], 10));
+      });
+      return `${prefijo}-${String(maxNumero + 1).padStart(3, "0")}`;
+    } catch (error) {
+      console.error("Error calculando el siguiente nombre sugerido:", error);
+      return undefined;
+    }
+  };
+
+  const handleDrawEnd = async (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
     setDrawing(false);
-    setFormModalState({ mode: "create", geojson, distanciaTotalKm });
+    const nombreSugerido = await sugerirNombreMicrorruta(geojson);
+    setFormModalState({ mode: "create", geojson, distanciaTotalKm, nombreSugerido });
   };
 
   const handleCloseModal = () => setFormModalState(null);
@@ -882,6 +969,7 @@ export default function AdminMicrorrutas() {
           mode="create"
           geojson={formModalState.geojson}
           distanciaTotalKm={formModalState.distanciaTotalKm}
+          nombreSugerido={formModalState.nombreSugerido}
           onClose={handleCloseModal}
           onSaved={refresh}
           onCreated={(mr) => setAsignandoTrabajadorPara(mr)}

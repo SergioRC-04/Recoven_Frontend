@@ -26,6 +26,12 @@ type MicrorrutaFormModalProps =
       // terminar de dibujar. "Distancia pavimentada" se deriva de este valor
       // (total - no pavimentada) — no se guarda de forma independiente.
       distanciaTotalKm: number;
+      // Nombre recomendado (p. ej. "Suroccidente-100"), calculado por el
+      // padre a partir de la localidad del trazo y el último número ya
+      // usado con ese prefijo — precarga el campo, editable como
+      // cualquier otro valor. undefined si no se pudo determinar (el
+      // campo queda vacío, como antes de que existiera esta sugerencia).
+      nombreSugerido?: string;
       onClose: () => void;
       onSaved: () => void;
       // Se llama solo al CREAR (no al editar), con la microrruta recién
@@ -79,7 +85,10 @@ function FieldLabel({ children, help }: { children: ReactNode; help: string }) {
 
 export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
   const { mode, onClose, onSaved } = props;
-  const initial = props.mode === "edit" ? props.initialValues : EMPTY_VALUES;
+  const initial =
+    props.mode === "edit"
+      ? props.initialValues
+      : { ...EMPTY_VALUES, nombre: props.nombreSugerido ?? EMPTY_VALUES.nombre };
 
   const [values, setValues] = useState<MicrorrutaFormValues>(initial);
   const [dias, setDias] = useState<Set<number>>(parseDias(initial.diasFrecuencia));
@@ -187,7 +196,7 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
                 required
                 value={values.nombre}
                 onChange={(e) => update("nombre", e.target.value)}
-                placeholder="MR-RECOLECCION-01"
+                placeholder="Suroccidente-100"
                 className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>

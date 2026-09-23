@@ -314,7 +314,11 @@ export interface MicrorrutasFilters {
   // cuatro, independiente de los demás y combinable con ellos.
   municipio?: Municipio;
   // Por defecto (sin este campo) el backend devuelve solo las ACTIVA.
-  estado?: EstadoMicrorruta;
+  // "TODAS" es un valor propio de este filtro (no del estado real de una
+  // ruta, que solo puede ser ACTIVA/INACTIVA) — el backend sí lo acepta,
+  // se usa p. ej. al calcular el siguiente nombre sugerido, donde
+  // importa no chocar con el nombre de una ruta inactiva.
+  estado?: EstadoMicrorruta | "TODAS";
 }
 
 // Una fila del selector de macrorrutas del admin — solo las que
