@@ -32,7 +32,7 @@ import type {
   ViaProperties,
   Municipio,
 } from "../../types/geo";
-import type { Recycler } from "../../types/recycler";
+import type { Recycler, Clasificacion } from "../../types/recycler";
 import {
   toMicrorrutaFormValues,
   ESTADO_MICRORRUTA_LABELS,
@@ -123,6 +123,19 @@ export default function AdminMicrorrutas() {
   // Búsqueda por nombre del reciclador asignado — filtro en memoria, ver
   // microrrutasGeoFiltrado más abajo.
   const [searchTrabajador, setSearchTrabajador] = useState("");
+  // Ids ocultos del mapa a mano (checkbox por fila en la tabla) —
+  // independiente de los demás filtros: una microrruta puede seguir
+  // apareciendo en la tabla pero no dibujarse en el mapa. Vacío = todas
+  // visibles, el comportamiento de siempre.
+  const [microrrutasOcultasIds, setMicrorrutasOcultasIds] = useState<Set<number>>(new Set());
+  const toggleVisibilidadMicrorruta = (mr: MicrorrutaProperties) => {
+    setMicrorrutasOcultasIds((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(mr.id)) siguiente.delete(mr.id);
+      else siguiente.add(mr.id);
+      return siguiente;
+    });
+  };
 
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -281,10 +294,12 @@ export default function AdminMicrorrutas() {
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
   const trabajadorPorMicrorrutaId = new Map<number, string>();
+  const clasificacionPorMicrorrutaId = new Map<number, Clasificacion>();
   recyclers.forEach((r) => {
     r.microrrutas.forEach((m) => {
       if (!trabajadorPorMicrorrutaId.has(m.id)) {
         trabajadorPorMicrorrutaId.set(m.id, r.nombreCompleto);
+        clasificacionPorMicrorrutaId.set(m.id, r.clasificacion);
       }
     });
   });
@@ -307,6 +322,33 @@ export default function AdminMicrorrutas() {
         };
 
   const microrrutasList = microrrutasGeoFiltrado?.features?.map((f) => f.properties) ?? [];
+
+  // Marca/desmarca de una sola vez todas las que la tabla tiene listadas
+  // AHORA MISMO (respetando el filtro de trabajador activo) — no toca el
+  // estado de las que están ocultas por fuera de ese filtro.
+  const toggleTodasVisibilidad = (mostrar: boolean) => {
+    setMicrorrutasOcultasIds((prev) => {
+      const siguiente = new Set(prev);
+      microrrutasList.forEach((mr) => {
+        if (mostrar) siguiente.delete(mr.id);
+        else siguiente.add(mr.id);
+      });
+      return siguiente;
+    });
+  };
+
+  // Solo para el mapa: además del filtro de búsqueda, se quitan las
+  // marcadas como ocultas a mano — la tabla (microrrutasList, arriba)
+  // sigue mostrándolas todas, con su casilla desmarcada.
+  const microrrutasGeoParaMapa =
+    !microrrutasGeoFiltrado || microrrutasOcultasIds.size === 0
+      ? microrrutasGeoFiltrado
+      : {
+          type: "FeatureCollection" as const,
+          features: microrrutasGeoFiltrado.features.filter(
+            (f) => !microrrutasOcultasIds.has(f.properties.id)
+          ),
+        };
 
   const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
   const localidadesOrdenadas = ordenarPorConteo(
@@ -334,6 +376,7 @@ export default function AdminMicrorrutas() {
     setSelectedLocalidad("");
     setSelectedBarrio("");
     setSelectedMacrorruta("");
+    setMicrorrutasOcultasIds(new Set());
   };
 
   const handleLocalidadChange = (value: string) => {
@@ -730,7 +773,7 @@ export default function AdminMicrorrutas() {
         barrioCod={selectedBarrio || undefined}
         barriosGeoJson={barriosGeo}
         viasGeoJson={viasGeo}
-        microrrutasGeoJson={microrrutasGeoFiltrado}
+        microrrutasGeoJson={microrrutasGeoParaMapa}
         pendingGeojson={formModalState?.mode === "create" ? formModalState.geojson : null}
         drawing={drawing}
         editingGeometriaId={editingGeometriaId}
@@ -744,18 +787,50 @@ export default function AdminMicrorrutas() {
         selectedMicrorrutaId={microrrutaSeleccionadaId}
       />
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {/* Marcan/desmarcan solo las que la tabla tiene listadas AHORA
+            (respetan el buscador de trabajador) — mismo criterio que el
+            checkbox del encabezado de la tabla en escritorio, pero
+            alcanzable también en mobile, donde no hay esa fila. */}
+        <button
+          type="button"
+          onClick={() => toggleTodasVisibilidad(true)}
+          disabled={microrrutasList.length === 0}
+          className="shrink-0 text-xs font-bold text-emerald-600 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Marcar todas
+        </button>
+        <span className="text-xs text-gray-300">|</span>
+        <button
+          type="button"
+          onClick={() => toggleTodasVisibilidad(false)}
+          disabled={microrrutasList.length === 0}
+          className="shrink-0 text-xs font-bold text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Desmarcar todas
+        </button>
+        {microrrutasOcultasIds.size > 0 && (
+          <>
+            <span className="text-xs text-gray-300">|</span>
+            <button
+              type="button"
+              onClick={() => setMicrorrutasOcultasIds(new Set())}
+              title="Vuelve a mostrar incluso las que quedaron ocultas fuera del filtro actual"
+              className="shrink-0 text-xs font-bold text-emerald-600 hover:text-emerald-800"
+            >
+              Mostrar todas ({microrrutasOcultasIds.size} oculta
+              {microrrutasOcultasIds.size === 1 ? "" : "s"})
+            </button>
+          </>
+        )}
         <div className="relative w-full max-w-xs">
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Trabajador
-          </label>
-          <FaSearch className="absolute top-1/2 left-3 mt-0.5 -translate-y-1/2 text-xs text-gray-400" />
+          <FaSearch className="absolute top-1/2 left-3 -translate-y-1/2 text-xs text-gray-400" />
           <input
             type="text"
             value={searchTrabajador}
             onChange={(e) => setSearchTrabajador(e.target.value)}
             placeholder="Nombre del reciclador..."
-            className="mt-1 w-full rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            className="w-full rounded-xl border border-gray-300 py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           />
         </div>
       </div>
@@ -770,6 +845,10 @@ export default function AdminMicrorrutas() {
           generandoReporteId={generandoReporteId}
           selectedId={microrrutaSeleccionadaId}
           trabajadorPorMicrorrutaId={trabajadorPorMicrorrutaId}
+          clasificacionPorMicrorrutaId={clasificacionPorMicrorrutaId}
+          microrrutasOcultasIds={microrrutasOcultasIds}
+          onToggleVisibilidad={toggleVisibilidadMicrorruta}
+          onToggleTodasVisibilidad={toggleTodasVisibilidad}
           onEdit={handleEdit}
           onEditGeometria={(mr) => setEditingGeometriaId(mr.id)}
           onDelete={handleDelete}

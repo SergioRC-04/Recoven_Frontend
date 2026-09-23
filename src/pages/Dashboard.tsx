@@ -97,7 +97,7 @@ export default function Dashboard() {
     { id: "pqrsdf", label: "PQRSDF", icon: FaClipboardList },
     { id: "microrrutas", label: "Microrrutas", icon: FaRoute },
     { id: "recyclers", label: "Recicladores", icon: FaRecycle },
-    { id: "usuarios", label: "Usuarios", icon: FaUsers },
+    { id: "usuarios", label: "Guías", icon: FaUsers },
   ];
 
   // Selecciona la pestaña y, en mobile, cierra el drawer de una vez — en
@@ -108,10 +108,10 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col md:h-screen md:flex-row md:overflow-hidden">
+    <div className="flex min-h-screen flex-col lg:h-screen lg:flex-row lg:overflow-hidden">
       {/* Barra superior — solo en mobile. Sticky para que el título quede
           siempre visible aunque se haga scroll del contenido de abajo. */}
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-4 py-3 text-white md:hidden">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-4 py-3 text-white lg:hidden">
         <button
           onClick={() => setMenuAbierto(true)}
           aria-label="Abrir menú"
@@ -129,17 +129,17 @@ export default function Dashboard() {
           abierto. Tocarlo cierra el menú, igual que el botón de cerrar. */}
       {menuAbierto && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setMenuAbierto(false)}
         />
       )}
 
       {/* Sidebar. En mobile es un drawer superpuesto (fixed, se desliza
           desde la izquierda con translate-x) que no empuja ni reduce el
-          contenido — en desktop, las clases md: lo devuelven a ser el
+          contenido — en desktop, las clases lg: lo devuelven a ser el
           sidebar estático de siempre, sin overlay ni animación. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80%] flex-col border-r border-gray-800 bg-gray-900 text-white transition-transform duration-200 ease-out md:static md:z-auto md:w-64 md:max-w-none md:shrink-0 md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80%] flex-col border-r border-gray-800 bg-gray-900 text-white transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 ${
           menuAbierto ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -151,7 +151,7 @@ export default function Dashboard() {
           <button
             onClick={() => setMenuAbierto(false)}
             aria-label="Cerrar menú"
-            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-800 hover:text-white md:hidden"
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-800 hover:text-white lg:hidden"
           >
             <FaTimes />
           </button>
@@ -195,7 +195,7 @@ export default function Dashboard() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto bg-gray-50 p-6 md:p-10">
+      <main className="flex-1 overflow-y-auto bg-gray-50 p-6 lg:p-10">
         {activeTab === "leads" && <LeadsTable />}
         {activeTab === "metrics" && <MetricsManager />}
         {activeTab === "documents" && <DocumentsManager />}

@@ -297,7 +297,7 @@ export default function AdminUsuarios() {
       {/* Encabezado */}
       <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-900">Usuarios</h1>
+          <h1 className="text-2xl font-black text-gray-900">Guías</h1>
           <p className="text-sm text-gray-500">
             Direcciones, pólizas y guía de calles por microrruta, para uso en campo.
           </p>

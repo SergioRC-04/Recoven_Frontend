@@ -6,8 +6,10 @@ import {
   FaCheckCircle,
   FaFilePdf,
   FaSpinner,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { formatearDiasFrecuenciaCorto, type MicrorrutaProperties } from "../../types/microrruta";
+import type { Clasificacion } from "../../types/recycler";
 
 // Formatea la fecha directo desde el texto ISO, sin construir un objeto
 // Date — new Date(iso).toLocaleDateString() convierte a la zona horaria
@@ -35,6 +37,21 @@ interface MicrorrutasTableProps {
   // el padre (misma búsqueda inversa que ya usa el generador de PDF sobre
   // la lista completa de recicladores).
   trabajadorPorMicrorrutaId: Map<number, string>;
+  // Clasificación del trabajador asignado a cada microrruta, por id —
+  // opcional: solo AdminMicrorrutas la pasa, para resaltar en la tabla las
+  // rutas cuyo reciclador está marcado "A quitar". AdminUsuarios reutiliza
+  // este mismo componente sin este resaltado (no aplica ahí).
+  clasificacionPorMicrorrutaId?: Map<number, Clasificacion>;
+  // Ids de microrrutas ocultas del mapa (siguen apareciendo en esta tabla,
+  // solo no se dibujan) — opcional: solo AdminMicrorrutas la pasa, junto
+  // con onToggleVisibilidad. Si no se pasa ninguna de las dos, no se
+  // muestra la casilla de visibilidad (AdminUsuarios no la necesita).
+  microrrutasOcultasIds?: Set<number>;
+  onToggleVisibilidad?: (microrruta: MicrorrutaProperties) => void;
+  // Marca/desmarca de una sola vez todas las microrrutas que esta tabla
+  // tiene listadas ahora (respetando los demás filtros activos) — true =
+  // mostrarlas todas, false = ocultarlas todas.
+  onToggleTodasVisibilidad?: (mostrar: boolean) => void;
   onEdit: (microrruta: MicrorrutaProperties) => void;
   onEditGeometria: (microrruta: MicrorrutaProperties) => void;
   onDelete: (microrruta: MicrorrutaProperties) => void;
@@ -52,6 +69,10 @@ export default function MicrorrutasTable({
   generandoReporteId,
   selectedId,
   trabajadorPorMicrorrutaId,
+  clasificacionPorMicrorrutaId,
+  microrrutasOcultasIds,
+  onToggleVisibilidad,
+  onToggleTodasVisibilidad,
   onEdit,
   onEditGeometria,
   onDelete,
@@ -73,7 +94,18 @@ export default function MicrorrutasTable({
 
   const renderTrabajador = (mr: MicrorrutaProperties) => {
     const nombre = trabajadorPorMicrorrutaId.get(mr.id);
-    return nombre ? nombre : <span className="text-gray-300">Sin asignar</span>;
+    if (!nombre) return <span className="text-gray-300">Sin asignar</span>;
+    const esAQuitar = clasificacionPorMicrorrutaId?.get(mr.id) === "A_QUITAR";
+    if (!esAQuitar) return nombre;
+    return (
+      <span
+        className="inline-flex items-center gap-1 font-bold text-orange-700"
+        title="Reciclador clasificado como 'A quitar'"
+      >
+        <FaExclamationTriangle className="shrink-0 text-orange-500" />
+        {nombre}
+      </span>
+    );
   };
 
   // El barrio ya viene calculado y guardado por el backend (MicrorrutaBarrio)
@@ -127,6 +159,17 @@ export default function MicrorrutasTable({
     </>
   );
 
+  // Solo aparece la casilla/columna de visibilidad si el padre pasó
+  // ambas props — AdminUsuarios no las pasa y no le sale la columna.
+  const mostrarColumnaVisibilidad = !!onToggleVisibilidad;
+  const todasVisibles = microrrutas.every((mr) => !microrrutasOcultasIds?.has(mr.id));
+  const ningunaVisible = microrrutas.every((mr) => microrrutasOcultasIds?.has(mr.id));
+  // ref en vez de prop: React no tiene una prop "indeterminate" para
+  // <input type="checkbox">, hay que setearlo directo en el nodo del DOM.
+  const setRefIndeterminado = (el: HTMLInputElement | null) => {
+    if (el) el.indeterminate = microrrutas.length > 0 && !todasVisibles && !ningunaVisible;
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       {/* Tabla normal — solo desde md hacia arriba */}
@@ -134,6 +177,19 @@ export default function MicrorrutasTable({
         <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
             <tr>
+              {mostrarColumnaVisibilidad && (
+                <th className="p-4 text-center">
+                  <input
+                    ref={setRefIndeterminado}
+                    type="checkbox"
+                    checked={todasVisibles}
+                    disabled={microrrutas.length === 0}
+                    onChange={(e) => onToggleTodasVisibilidad?.(e.target.checked)}
+                    title="Marcar/desmarcar todas las de esta lista"
+                    className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
+                  />
+                </th>
+              )}
               <th className="p-4">Nombre</th>
               <th className="p-4 text-center">Tipo</th>
               <th className="p-4">Fecha</th>
@@ -146,7 +202,10 @@ export default function MicrorrutasTable({
           <tbody className="divide-y divide-gray-100">
             {microrrutas.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-gray-400">
+                <td
+                  colSpan={mostrarColumnaVisibilidad ? 8 : 7}
+                  className="py-6 text-center text-gray-400"
+                >
                   No hay microrrutas registradas con este filtro.
                 </td>
               </tr>
@@ -154,18 +213,37 @@ export default function MicrorrutasTable({
               microrrutasOrdenadas.map((mr) => {
                 const isEditingThis = editingGeometriaId === mr.id;
                 const isSelected = selectedId === mr.id;
+                // Borde independiente de los demás estados (edición/
+                // selección siguen decidiendo el fondo) — así la fila
+                // sigue marcada aunque esté seleccionada o en edición.
+                const esAQuitar = clasificacionPorMicrorrutaId?.get(mr.id) === "A_QUITAR";
                 return (
                   <tr
                     key={mr.id}
                     onClick={() => onSelectRow(mr)}
-                    className={`cursor-pointer transition ${
+                    className={`cursor-pointer border-l-4 transition ${
+                      esAQuitar ? "border-orange-400" : "border-transparent"
+                    } ${
                       isEditingThis
                         ? "bg-amber-50/70"
                         : isSelected
                           ? "bg-red-50/70 ring-1 ring-red-300 ring-inset"
-                          : "hover:bg-gray-50"
+                          : esAQuitar
+                            ? "bg-orange-50/60 hover:bg-orange-50"
+                            : "hover:bg-gray-50"
                     }`}
                   >
+                    {mostrarColumnaVisibilidad && (
+                      <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={!microrrutasOcultasIds?.has(mr.id)}
+                          onChange={() => onToggleVisibilidad?.(mr)}
+                          title="Mostrar/ocultar esta microrruta en el mapa"
+                          className="h-4 w-4 cursor-pointer accent-emerald-600"
+                        />
+                      </td>
+                    )}
                     <td className="p-4 font-bold text-gray-900">{mr.nombre}</td>
                     <td className="p-4 text-center">
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
@@ -222,6 +300,16 @@ export default function MicrorrutasTable({
                 }`}
               >
                 <div className="flex min-w-0 items-center gap-2">
+                  {mostrarColumnaVisibilidad && (
+                    <input
+                      type="checkbox"
+                      checked={!microrrutasOcultasIds?.has(mr.id)}
+                      onChange={() => onToggleVisibilidad?.(mr)}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Mostrar/ocultar esta microrruta en el mapa"
+                      className="h-4 w-4 shrink-0 cursor-pointer accent-emerald-600"
+                    />
+                  )}
                   <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
                     {mr.tipo}
                   </span>
