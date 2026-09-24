@@ -163,6 +163,10 @@ export default function AdminMicrorrutas() {
 
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
+  // Sincronización silenciosa al volver a esta pestaña del navegador (ver
+  // más abajo): recarga los datos SIN mostrar "Cargando..." ni mover la
+  // cámara del mapa, a diferencia de refresh().
+  const [syncKey, setSyncKey] = useState(0);
 
   const requestIdRef = useRef(0);
 
@@ -200,7 +204,7 @@ export default function AdminMicrorrutas() {
     getMacrorrutas(selectedCiudad)
       .then(setMacrorrutas)
       .catch((err) => console.error("Error cargando macrorrutas:", err));
-  }, [selectedCiudad, refreshKey]);
+  }, [selectedCiudad, refreshKey, syncKey]);
 
   // Recicladores — alimentan la columna "Trabajador" de la tabla Y la
   // lista de opciones de AsignarTrabajadorModal. refreshKey en las
@@ -212,7 +216,7 @@ export default function AdminMicrorrutas() {
     getRecyclers({})
       .then(setRecyclers)
       .catch((err) => console.error("Error cargando recicladores:", err));
-  }, [refreshKey]);
+  }, [refreshKey, syncKey]);
 
   // Barrios de la ciudad activa — se recarga al cambiar de ciudad.
   useEffect(() => {
@@ -234,7 +238,7 @@ export default function AdminMicrorrutas() {
       .catch((err) =>
         console.error("Error cargando el total de microrrutas para los filtros:", err)
       );
-  }, [selectedCiudad, refreshKey]);
+  }, [selectedCiudad, refreshKey, syncKey]);
 
   // ─── Cálculo derivado de barrios y barriosGeo (sin setState en efectos) ────
 
@@ -314,6 +318,63 @@ export default function AdminMicrorrutas() {
     selectedEstado,
     refreshKey,
   ]);
+
+  // Recarga silenciosa de la lista visible cuando cambia syncKey: reemplaza
+  // los datos ya cargados sin pasar por "Cargando..." (que vaciaría la tabla
+  // y movería el scroll). Si justo hay una carga normal en curso
+  // (microrrutasGeo === null), no se toca — esa ya trae datos frescos.
+  const silentRequestRef = useRef(0);
+  useEffect(() => {
+    if (syncKey === 0) return;
+    const requestId = ++silentRequestRef.current;
+    getMicrorrutas({
+      localidadCod: selectedLocalidad || undefined,
+      barrioCod: selectedBarrio || undefined,
+      macrorrutaNumero: selectedMacrorruta || undefined,
+      municipio: selectedCiudad,
+      estado: selectedEstado,
+    })
+      .then((data) => {
+        if (silentRequestRef.current !== requestId) return;
+        setMicrorrutasGeo((prev) => (prev === null ? prev : data));
+      })
+      .catch((err) => console.error("Error sincronizando microrrutas:", err));
+    // Los filtros se leen tal como están cuando cambia syncKey; no deben
+    // re-disparar esta recarga por sí solos (eso ya lo hace el efecto de
+    // carga principal, de arriba).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncKey]);
+
+  // Al volver a esta pestaña del navegador (tras editar recicladores o
+  // microrrutas en otra), se recargan los datos. No se hace si hay algo en
+  // curso que una recarga pisaría: dibujando, editando un trazo o con un
+  // formulario/modal abierto. Se limita a una vez cada 3 s porque
+  // "visibilitychange" y "focus" suelen dispararse juntos.
+  const ocupadoRef = useRef(false);
+  const ultimaSyncRef = useRef(0);
+  useEffect(() => {
+    ocupadoRef.current =
+      drawing ||
+      editingGeometriaId !== null ||
+      formModalState !== null ||
+      asignandoTrabajadorPara !== null ||
+      mostrarExportarCapas;
+  }, [drawing, editingGeometriaId, formModalState, asignandoTrabajadorPara, mostrarExportarCapas]);
+  useEffect(() => {
+    const sincronizar = () => {
+      if (document.visibilityState !== "visible" || ocupadoRef.current) return;
+      const ahora = Date.now();
+      if (ahora - ultimaSyncRef.current < 3000) return;
+      ultimaSyncRef.current = ahora;
+      setSyncKey((k) => k + 1);
+    };
+    document.addEventListener("visibilitychange", sincronizar);
+    window.addEventListener("focus", sincronizar);
+    return () => {
+      document.removeEventListener("visibilitychange", sincronizar);
+      window.removeEventListener("focus", sincronizar);
+    };
+  }, []);
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
@@ -912,7 +973,7 @@ export default function AdminMicrorrutas() {
         barriosGeoJson={barriosGeo}
         viasGeoJson={viasGeo}
         microrrutasGeoJson={microrrutasGeoParaMapa}
-        encuadreKey={microrrutasGeo}
+        encuadreKey={`${selectedCiudad}|${selectedLocalidad}|${selectedBarrio}|${selectedMacrorruta}|${selectedEstado}|${refreshKey}|${microrrutasGeo ? "cargado" : "cargando"}`}
         pendingGeojson={formModalState?.mode === "create" ? formModalState.geojson : null}
         drawing={drawing}
         editingGeometriaId={editingGeometriaId}

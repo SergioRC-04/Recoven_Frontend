@@ -251,6 +251,11 @@ interface UsuariosMapaProps {
   // la línea de referencia de todas las vías del área filtrada).
   viasLabelGeoJson: GeoJsonFeatureCollection<ViaProperties> | null;
   microrrutasGeoJson: MicrorrutasGeoJson | null;
+  // Decide CUÁNDO se re-encuadra la cámara a todas las rutas: solo cuando
+  // esta clave cambia, no cada vez que llegan datos nuevos (p. ej. la
+  // recarga silenciosa al volver a la pestaña del navegador). Sin ella, se
+  // re-encuadra siempre que cambie microrrutasGeoJson, como antes.
+  encuadreKey?: unknown;
   selectedMicrorrutaId: number | null;
   onSelectMicrorruta: (id: number | null) => void;
   titulo: string | null;
@@ -263,6 +268,7 @@ export default function UsuariosMapa({
   viasGeoJson,
   viasLabelGeoJson,
   microrrutasGeoJson,
+  encuadreKey,
   selectedMicrorrutaId,
   onSelectMicrorruta,
   titulo,
@@ -450,12 +456,11 @@ export default function UsuariosMapa({
     }
   }, [barrioCod, localidadCod, barriosGeoJson]);
 
-  // Fuente de microrrutas + encuadre general (solo si no hay filtro de
-  // ubicación activo, igual criterio que MicrorrutaMapEditor).
+  // Fuente de microrrutas (y sus tramos compartidos). El encuadre de
+  // cámara va en el efecto siguiente, con su propia clave.
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
     const crucesLayer = crucesLayerRef.current;
-    const map = mapRef.current;
     if (!microrrutasLayer || !microrrutasGeoJson) return;
 
     try {
@@ -476,19 +481,31 @@ export default function UsuariosMapa({
           })
         );
       }
-
-      if (map && !localidadCod && !barrioCod) {
-        const extent = source.getExtent();
-        if (extent && !isEmpty(extent)) {
-          map.getView().fit(extent, { padding: [40, 40, 40, 40], maxZoom: 16, duration: 400 });
-        } else {
-          map.getView().animate({ center: CENTER_BARRANQUILLA, zoom: 12, duration: 400 });
-        }
-      }
     } catch (error) {
       console.error("Error interpretando el GeoJSON de microrrutas:", error);
     }
-  }, [microrrutasGeoJson, localidadCod, barrioCod]);
+  }, [microrrutasGeoJson]);
+
+  // Encuadre general (solo si no hay filtro de ubicación activo, igual
+  // criterio que MicrorrutaMapEditor). Corre después del efecto de la
+  // fuente, así que lee la fuente ya actualizada.
+  const claveEncuadre = encuadreKey ?? microrrutasGeoJson;
+  useEffect(() => {
+    const microrrutasLayer = microrrutasLayerRef.current;
+    const map = mapRef.current;
+    if (!map || !microrrutasLayer || !microrrutasGeoJson) return;
+    if (localidadCod || barrioCod) return;
+
+    const extent = microrrutasLayer.getSource()?.getExtent();
+    if (extent && !isEmpty(extent)) {
+      map.getView().fit(extent, { padding: [40, 40, 40, 40], maxZoom: 16, duration: 400 });
+    } else {
+      map.getView().animate({ center: CENTER_BARRANQUILLA, zoom: 12, duration: 400 });
+    }
+    // microrrutasGeoJson solo se lee para saber si ya cargó; el disparo lo
+    // decide claveEncuadre a propósito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveEncuadre, localidadCod, barrioCod]);
 
   // Encuadrar sobre la microrruta seleccionada (desde la tabla o desde el
   // propio mapa) — para que, al elegir una ruta en la tabla de abajo, el

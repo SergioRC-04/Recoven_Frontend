@@ -7,7 +7,7 @@
 // direcciones/pólizas ya cargados se guardan en localStorage y se muestran
 // de inmediato al volver a filtrar/seleccionar, sin depender de que la
 // petición nueva llegue a tiempo (o llegue del todo).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FaFilePdf,
   FaSpinner,
@@ -69,6 +69,34 @@ export default function AdminUsuarios() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [generandoPdf, setGenerandoPdf] = useState(false);
 
+  // Sincronización al volver a esta pestaña del navegador: si se editaron
+  // recicladores o microrrutas en otra, se recargan los datos. Es silenciosa
+  // (useCachedResource conserva lo ya mostrado mientras llega lo nuevo). No
+  // se dispara con un formulario/vista previa abiertos ni generando el PDF;
+  // se limita a una vez cada 3 s porque visibilitychange y focus suelen
+  // dispararse juntos.
+  const [syncKey, setSyncKey] = useState(0);
+  const ocupadoRef = useRef(false);
+  const ultimaSyncRef = useRef(0);
+  useEffect(() => {
+    ocupadoRef.current = showAddModal || showPreviewModal || generandoPdf;
+  }, [showAddModal, showPreviewModal, generandoPdf]);
+  useEffect(() => {
+    const sincronizar = () => {
+      if (document.visibilityState !== "visible" || ocupadoRef.current) return;
+      const ahora = Date.now();
+      if (ahora - ultimaSyncRef.current < 3000) return;
+      ultimaSyncRef.current = ahora;
+      setSyncKey((k) => k + 1);
+    };
+    document.addEventListener("visibilitychange", sincronizar);
+    window.addEventListener("focus", sincronizar);
+    return () => {
+      document.removeEventListener("visibilitychange", sincronizar);
+      window.removeEventListener("focus", sincronizar);
+    };
+  }, []);
+
   const [online, setOnline] = useState(navigator.onLine);
 
   // ─── Conectividad ────────────────────────────────────────────────────────
@@ -114,7 +142,8 @@ export default function AdminUsuarios() {
   );
 
   const recyclers =
-    useCachedResource<Recycler[]>("recyclers", () => getRecyclers({})) ?? EMPTY_RECYCLERS;
+    useCachedResource<Recycler[]>("recyclers", () => getRecyclers({}), [syncKey]) ??
+    EMPTY_RECYCLERS;
 
   const microrrutasGeo = useCachedResource<MicrorrutasGeoJson>(
     `microrrutas:${selectedCiudad}:${selectedLocalidad}:${selectedBarrio}`,
@@ -123,7 +152,8 @@ export default function AdminUsuarios() {
         localidadCod: selectedLocalidad || undefined,
         barrioCod: selectedBarrio || undefined,
         municipio: selectedCiudad,
-      })
+      }),
+    [syncKey]
   );
 
   // Microrrutas SIN el filtro de localidad/barrio — solo para calcular
@@ -132,7 +162,8 @@ export default function AdminUsuarios() {
   // ver lib/microrrutaConteos.ts).
   const todasLasMicrorrutasGeo = useCachedResource<MicrorrutasGeoJson>(
     `microrrutas-todas:${selectedCiudad}`,
-    () => getMicrorrutas({ municipio: selectedCiudad })
+    () => getMicrorrutas({ municipio: selectedCiudad }),
+    [syncKey]
   );
 
   // Direcciones/pólizas y guía de calles de la microrruta activa — llave
@@ -142,14 +173,14 @@ export default function AdminUsuarios() {
     useCachedResource<UsuarioMicrorrutaProperties[]>(
       microrrutaSeleccionadaId !== null ? `usuarios:${microrrutaSeleccionadaId}` : null,
       () => getUsuariosMicrorruta(microrrutaSeleccionadaId as number),
-      [refreshUsuariosToken]
+      [refreshUsuariosToken, syncKey]
     ) ?? EMPTY_USUARIOS;
 
   const guiaCalles =
     useCachedResource<GuiaCallesPaso[]>(
       microrrutaSeleccionadaId !== null ? `guia:${microrrutaSeleccionadaId}` : null,
       () => getGuiaCalles(microrrutaSeleccionadaId as number),
-      [refreshUsuariosToken]
+      [refreshUsuariosToken, syncKey]
     ) ?? EMPTY_GUIA;
 
   // ─── Derivados ──────────────────────────────────────────────────────────
@@ -398,6 +429,7 @@ export default function AdminUsuarios() {
         viasGeoJson={viasGeo}
         viasLabelGeoJson={viasMicrorrutaGeo}
         microrrutasGeoJson={microrrutasGeo}
+        encuadreKey={`${selectedCiudad}|${selectedLocalidad}|${selectedBarrio}|${microrrutasGeo ? "cargado" : "cargando"}`}
         selectedMicrorrutaId={microrrutaSeleccionadaId}
         onSelectMicrorruta={(id) => setMicrorrutaSeleccionadaId(id)}
         titulo={tituloMapa}
