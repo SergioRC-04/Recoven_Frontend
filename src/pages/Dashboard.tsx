@@ -22,6 +22,30 @@ import AdminUsuarios from "../components/admin/AdminUsuarios";
 
 type Tab = "leads" | "metrics" | "documents" | "pqrsdf" | "microrrutas" | "recyclers" | "usuarios";
 
+const TABS_VALIDAS: Tab[] = [
+  "leads",
+  "metrics",
+  "documents",
+  "pqrsdf",
+  "microrrutas",
+  "recyclers",
+  "usuarios",
+];
+const TAB_STORAGE_KEY = "recoven:dashboard:tab";
+
+// Pestaña con la que se abre el panel: la última que se usó, para que al
+// recargar la página no vuelva siempre a "Solicitudes". Con try/catch y
+// validación porque localStorage puede estar bloqueado o traer un valor
+// viejo de una pestaña que ya no existe.
+function leerTabGuardada(): Tab {
+  try {
+    const guardada = localStorage.getItem(TAB_STORAGE_KEY);
+    if (guardada && (TABS_VALIDAS as string[]).includes(guardada)) return guardada as Tab;
+  } catch {
+    // sin acceso a localStorage: se usa la pestaña por defecto
+  }
+  return "leads";
+}
 // Decodifica el payload de un JWT SIN verificarlo — no hace falta la clave
 // secreta para esto, solo para firmar/verificar. El backend ya incrusta
 // "exp" automáticamente porque JwtModule está configurado con
@@ -53,7 +77,7 @@ function formatearTiempoRestante(ms: number): string {
 
 export default function Dashboard() {
   const { logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>("leads");
+  const [activeTab, setActiveTab] = useState<Tab>(leerTabGuardada);
   // Controla el menú tipo "drawer" solo en mobile. En desktop no se usa
   // (el sidebar siempre está visible ahí), pero lo dejamos en false por
   // defecto para que, si alguien reduce la ventana, no aparezca ya abierto.
@@ -104,6 +128,11 @@ export default function Dashboard() {
   // desktop este cierre no importa porque el sidebar nunca usa el drawer.
   const seleccionarTab = (tab: Tab) => {
     setActiveTab(tab);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+    } catch {
+      // no es crítico: solo se pierde recordar la pestaña
+    }
     setMenuAbierto(false);
   };
 
