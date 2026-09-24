@@ -6,6 +6,9 @@ import type {
   RecyclerCreatePayload,
   RecyclerUpdatePayload,
   TipoExportRecyclers,
+  MunicipioCierre,
+  CierreCensoPreview,
+  CierreCensoResultado,
 } from "../types/recycler";
 
 // Todos los endpoints del módulo comparten la misma base /recyclers.
@@ -144,4 +147,28 @@ export interface EstadoCertificadosGeneral {
  */
 export async function obtenerEstadoCertificadosGeneral(): Promise<EstadoCertificadosGeneral> {
   return recovenApi.get("/recyclers/certificados-estado", true);
+}
+
+/**
+ * Vista previa del cierre de censo de una ciudad: cuántos se desvinculan,
+ * cuántos pasan de nuevo a regular y cuántas rutas quedarían inactivas.
+ *
+ * Controller: GET /recyclers/cierre-censo/preview?municipio=  (JwtAuthGuard)
+ */
+export async function previsualizarCierreCenso(
+  municipio: MunicipioCierre
+): Promise<CierreCensoPreview> {
+  return recovenApi.get(`/recyclers/cierre-censo/preview?municipio=${municipio}`, true);
+}
+
+/**
+ * Cierra el censo de una ciudad (IRREVERSIBLE): desvincula a los "a quitar",
+ * pasa los nuevos a regulares y deja censados a todos los del informe nuevo.
+ * El backend guarda una copia del Excel (censados antes/después) y devuelve
+ * su URL pública.
+ *
+ * Controller: POST /recyclers/cierre-censo  (JwtAuthGuard)
+ */
+export async function cerrarCenso(municipio: MunicipioCierre): Promise<CierreCensoResultado> {
+  return recovenApi.post("/recyclers/cierre-censo", { municipio }, true);
 }

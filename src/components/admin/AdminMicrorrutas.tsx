@@ -33,7 +33,7 @@ import type {
   ViaProperties,
   Municipio,
 } from "../../types/geo";
-import type { Recycler, Clasificacion } from "../../types/recycler";
+import type { Recycler, Clasificacion, InformeSui } from "../../types/recycler";
 import {
   toMicrorrutaFormValues,
   ESTADO_MICRORRUTA_LABELS,
@@ -44,7 +44,7 @@ import {
   type MacrorrutaResumen,
 } from "../../types/microrruta";
 import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
-import MicrorrutasTable from "./MicrorrutasTable";
+import MicrorrutasTable, { type TrabajadorDeRuta } from "./MicrorrutasTable";
 import MicrorrutaFormModal from "./MicrorrutaFormModal";
 import ExportarCapasModal from "./ExportarCapasModal";
 import AsignarTrabajadorModal from "./AsignarTrabajadorModal";
@@ -321,19 +321,32 @@ export default function AdminMicrorrutas() {
   // objetos se recrearan en cada render, el mapa vería "datos nuevos"
   // cada vez que el usuario selecciona una ruta o marca una casilla y se
   // reencuadraría, quitándole el control de la cámara.
-  const { trabajadorPorMicrorrutaId, clasificacionPorMicrorrutaId } = useMemo(() => {
-    const trabajador = new Map<number, string>();
-    const clasificacion = new Map<number, Clasificacion>();
-    recyclers.forEach((r) => {
-      r.microrrutas.forEach((m) => {
-        if (!trabajador.has(m.id)) {
-          trabajador.set(m.id, r.nombreCompleto);
-          clasificacion.set(m.id, r.clasificacion);
-        }
+  const { trabajadorPorMicrorrutaId, clasificacionPorMicrorrutaId, trabajadoresPorMicrorrutaId } =
+    useMemo(() => {
+      const trabajador = new Map<number, string>();
+      const clasificacion = new Map<number, Clasificacion>();
+      // Todos los trabajadores de cada ruta (no solo el primero): una ruta
+      // compartida —un reciclador "a quitar" y uno nuevo durante el cambio
+      // de censo— debe mostrarlos a los dos.
+      const trabajadores = new Map<number, TrabajadorDeRuta[]>();
+      recyclers.forEach((r) => {
+        r.microrrutas.forEach((m) => {
+          if (!trabajador.has(m.id)) {
+            trabajador.set(m.id, r.nombreCompleto);
+            clasificacion.set(m.id, r.clasificacion);
+          }
+          trabajadores.set(m.id, [
+            ...(trabajadores.get(m.id) ?? []),
+            { nombre: r.nombreCompleto, clasificacion: r.clasificacion },
+          ]);
+        });
       });
-    });
-    return { trabajadorPorMicrorrutaId: trabajador, clasificacionPorMicrorrutaId: clasificacion };
-  }, [recyclers]);
+      return {
+        trabajadorPorMicrorrutaId: trabajador,
+        clasificacionPorMicrorrutaId: clasificacion,
+        trabajadoresPorMicrorrutaId: trabajadores,
+      };
+    }, [recyclers]);
 
   // Búsqueda por nombre del reciclador — filtro en memoria (no viaja al
   // backend, no hace falta: recyclers ya se cargó completo al montar) que
@@ -345,10 +358,12 @@ export default function AdminMicrorrutas() {
     return {
       type: "FeatureCollection" as const,
       features: microrrutasGeo.features.filter((f) =>
-        (trabajadorPorMicrorrutaId.get(f.properties.id) ?? "").toLowerCase().includes(busqueda)
+        (trabajadoresPorMicrorrutaId.get(f.properties.id) ?? []).some((t) =>
+          t.nombre.toLowerCase().includes(busqueda)
+        )
       ),
     };
-  }, [microrrutasGeo, searchTrabajador, trabajadorPorMicrorrutaId]);
+  }, [microrrutasGeo, searchTrabajador, trabajadoresPorMicrorrutaId]);
 
   const microrrutasList = useMemo(
     () => microrrutasGeoFiltrado?.features?.map((f) => f.properties) ?? [],
@@ -451,9 +466,8 @@ export default function AdminMicrorrutas() {
       const coords = geojson.coordinates;
       const puntoMedio = coords[Math.floor(coords.length / 2)];
       const punto: [number, number] = [puntoMedio[0], puntoMedio[1]];
-      localidadCod = todosLosBarriosGeo.features.find((f) =>
-        puntoEnGeometria(punto, f.geometry)
-      )?.properties.localidadCod;
+      localidadCod = todosLosBarriosGeo.features.find((f) => puntoEnGeometria(punto, f.geometry))
+        ?.properties.localidadCod;
     }
 
     const prefijo = localidadCod ? PREFIJO_POR_LOCALIDAD[localidadCod] : undefined;
@@ -519,7 +533,7 @@ export default function AdminMicrorrutas() {
     }
   };
 
-  const handleGenerarReporteTodas = async () => {
+  const handleGenerarReporteTodas = async (informe: InformeSui) => {
     const features = microrrutasGeo?.features ?? [];
     if (features.length === 0) {
       alert("No hay microrrutas para exportar con el filtro actual.");
@@ -532,8 +546,10 @@ export default function AdminMicrorrutas() {
 
     setGenerandoTodo({ actual: 0, total: rutas.length });
     try {
-      await generarReporteMicrorrutas(rutas, (actual, total) =>
-        setGenerandoTodo({ actual, total })
+      await generarReporteMicrorrutas(
+        rutas,
+        (actual, total) => setGenerandoTodo({ actual, total }),
+        informe
       );
     } catch (error) {
       console.error("Error generando el reporte de todas las microrrutas:", error);
@@ -543,19 +559,22 @@ export default function AdminMicrorrutas() {
     }
   };
 
-  const handleDescargarExcel = async () => {
+  const handleDescargarExcel = async (informe: InformeSui) => {
     setDescargandoExcel(true);
     try {
-      const blob = await exportarMicrorrutasExcel({
-        localidadCod: selectedLocalidad || undefined,
-        barrioCod: selectedBarrio || undefined,
-        macrorrutaNumero: selectedMacrorruta || undefined,
-        municipio: selectedCiudad,
-      });
+      const blob = await exportarMicrorrutasExcel(
+        {
+          localidadCod: selectedLocalidad || undefined,
+          barrioCod: selectedBarrio || undefined,
+          macrorrutaNumero: selectedMacrorruta || undefined,
+          municipio: selectedCiudad,
+        },
+        informe
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `microrrutas-${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.download = `microrrutas-${informe}-${new Date().toISOString().split("T")[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -642,25 +661,49 @@ export default function AdminMicrorrutas() {
                   type="button"
                   onClick={() => {
                     setMostrarMenuInformes(false);
-                    handleDescargarExcel();
+                    handleDescargarExcel("vigente");
                   }}
                   disabled={isBusy || descargandoExcel}
                   className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-                  Excel SUI Microrrutas
+                  Excel SUI Microrrutas — Vigente
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setMostrarMenuInformes(false);
-                    handleGenerarReporteTodas();
+                    handleDescargarExcel("nuevo");
+                  }}
+                  disabled={isBusy || descargandoExcel}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+                  Excel SUI Microrrutas — Nuevo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarMenuInformes(false);
+                    handleGenerarReporteTodas("vigente");
                   }}
                   disabled={isBusy || generandoTodo !== null}
                   className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-                  Informe SUI Microrrutas ({microrrutasList.length})
+                  Informe SUI Microrrutas — Vigente ({microrrutasList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarMenuInformes(false);
+                    handleGenerarReporteTodas("nuevo");
+                  }}
+                  disabled={isBusy || generandoTodo !== null}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
+                  Informe SUI Microrrutas — Nuevo ({microrrutasList.length})
                 </button>
                 <button
                   type="button"
@@ -942,6 +985,7 @@ export default function AdminMicrorrutas() {
           selectedId={microrrutaSeleccionadaId}
           trabajadorPorMicrorrutaId={trabajadorPorMicrorrutaId}
           clasificacionPorMicrorrutaId={clasificacionPorMicrorrutaId}
+          trabajadoresPorMicrorrutaId={trabajadoresPorMicrorrutaId}
           microrrutasOcultasIds={microrrutasOcultasIds}
           onToggleVisibilidad={toggleVisibilidadMicrorruta}
           onToggleTodasVisibilidad={toggleTodasVisibilidad}

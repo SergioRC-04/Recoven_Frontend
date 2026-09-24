@@ -181,3 +181,47 @@ export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
     microrrutasIds: recycler.microrrutas.map((m) => m.id),
   };
 }
+
+// Versión de los informes SUI de microrrutas mientras conviven dos censos:
+// "vigente" = con los recicladores censados (regulares o a quitar); "nuevo" =
+// con los recicladores nuevos y regulares (sin los a quitar).
+export type InformeSui = "vigente" | "nuevo";
+
+// ¿Este reciclador (activo) pertenece al informe indicado?
+export function perteneceAlInforme(
+  r: { censado: boolean; clasificacion: Clasificacion },
+  informe: InformeSui
+): boolean {
+  return informe === "vigente" ? r.censado : r.clasificacion !== "A_QUITAR";
+}
+
+// ============================================================
+// CIERRE DE CENSO (por ciudad)
+// ============================================================
+
+export type MunicipioCierre = Extract<Municipio, "BARRANQUILLA" | "PUERTO_COLOMBIA">;
+
+export interface CierreCensoResumen {
+  municipio: MunicipioCierre;
+  censadosAntes: number;
+  censadosDespues: number;
+  // A_QUITAR → desvinculados
+  desvinculados: number;
+  // NUEVO → REGULAR
+  nuevosARegulares: number;
+}
+
+// GET /recyclers/cierre-censo/preview — lo que pasaría si se cerrara ahora.
+export interface CierreCensoPreview extends CierreCensoResumen {
+  // Rutas cuyos recicladores activos son todos "a quitar" (quedarían
+  // inactivas al no tener reemplazo).
+  rutasQueQuedanInactivas: number;
+}
+
+// POST /recyclers/cierre-censo — resultado del cierre real.
+export interface CierreCensoResultado {
+  url: string;
+  nombreArchivo: string;
+  resumen: CierreCensoResumen;
+  fecha: string;
+}

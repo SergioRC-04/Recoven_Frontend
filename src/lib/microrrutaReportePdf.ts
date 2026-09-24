@@ -26,7 +26,7 @@ import type {
   LocalidadProperties,
 } from "../types/geo";
 import type { MicrorrutaProperties, LineStringGeoJson } from "../types/microrruta";
-import type { Recycler } from "../types/recycler";
+import { perteneceAlInforme, type Recycler, type InformeSui } from "../types/recycler";
 
 const VIEW_PROJ = "EPSG:3857";
 const DATA_PROJ = "EPSG:4326";
@@ -131,12 +131,22 @@ async function obtenerLocalidadesGeoJsonCache(
   return cache.localidadesGeoJson;
 }
 
+// Con `informe`, solo cuentan los recicladores de esa versión del censo
+// (ver perteneceAlInforme): si la ruta no tiene ninguno, devuelve null y el
+// reporte deja NOMBRE/CEDULA en blanco. Sin `informe`, el primero asignado.
 async function resolverReciclador(
   microrrutaId: number,
-  cache: CacheReporte
+  cache: CacheReporte,
+  informe?: InformeSui
 ): Promise<Recycler | null> {
   const todos = await obtenerRecyclersCache(cache);
-  return todos.find((r) => r.microrrutas.some((m) => m.id === microrrutaId)) ?? null;
+  return (
+    todos.find(
+      (r) =>
+        r.microrrutas.some((m) => m.id === microrrutaId) &&
+        (!informe || perteneceAlInforme(r, informe))
+    ) ?? null
+  );
 }
 
 interface UbicacionDesdeMicrorruta {
@@ -750,9 +760,10 @@ async function dibujarPaginaReporte(
   pdf: jsPDF,
   microrruta: MicrorrutaProperties,
   geometry: LineStringGeoJson,
-  cache: CacheReporte
+  cache: CacheReporte,
+  informe?: InformeSui
 ): Promise<void> {
-  const reciclador = await resolverReciclador(microrruta.id, cache);
+  const reciclador = await resolverReciclador(microrruta.id, cache, informe);
   const ubicacion = resolverUbicacionDesdeMicrorruta(microrruta);
 
   const { barriosGeoJson, viasGeoJson } = await obtenerContextoGeografico(
@@ -909,7 +920,8 @@ export interface RutaParaReporte {
 
 export async function generarReporteMicrorrutas(
   rutas: RutaParaReporte[],
-  onProgreso?: (actual: number, total: number) => void
+  onProgreso?: (actual: number, total: number) => void,
+  informe?: InformeSui
 ): Promise<void> {
   if (rutas.length === 0) return;
 
@@ -930,11 +942,12 @@ export async function generarReporteMicrorrutas(
       pdf,
       rutasOrdenadas[i].microrruta,
       rutasOrdenadas[i].geometry,
-      cache
+      cache,
+      informe
     );
     onProgreso?.(i + 1, rutasOrdenadas.length);
   }
 
   const fecha = new Date().toISOString().split("T")[0];
-  pdf.save(`microrrutas-reporte-${fecha}.pdf`);
+  pdf.save(`microrrutas-reporte${informe ? `-${informe}` : ""}-${fecha}.pdf`);
 }

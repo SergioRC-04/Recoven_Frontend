@@ -85,8 +85,14 @@ export default function RecyclersTable({
   const renderInterruptorCenso = (r: Recycler) => (
     <button
       onClick={() => onToggleCenso(r)}
-      disabled={isHistorico || togglingIds.has(r.id)}
-      title={r.censado ? "Censado" : "Sin censar"}
+      disabled={isHistorico || togglingIds.has(r.id) || (r.clasificacion === "NUEVO" && !r.censado)}
+      title={
+        r.clasificacion === "NUEVO" && !r.censado
+          ? "Un reciclador nuevo no puede estar censado"
+          : r.censado
+            ? "Censado"
+            : "Sin censar"
+      }
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
         r.censado ? "bg-emerald-600" : "bg-gray-300"
       }`}

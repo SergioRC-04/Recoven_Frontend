@@ -13,6 +13,7 @@ import type {
   MacrorrutasMapaGeoJson,
 } from "../types/microrruta";
 import type { Municipio } from "../types/geo";
+import type { InformeSui } from "../types/recycler";
 
 // ============================================================
 // LECTURA
@@ -229,12 +230,16 @@ export async function deleteMicrorruta(id: number): Promise<void> {
  *
  * Controller: GET /microrrutas/exportar-excel  (JwtAuthGuard)
  */
-export async function exportarMicrorrutasExcel(filters?: MicrorrutasFilters): Promise<Blob> {
+export async function exportarMicrorrutasExcel(
+  filters?: MicrorrutasFilters,
+  informe?: InformeSui
+): Promise<Blob> {
   const params = new URLSearchParams();
   if (filters?.localidadCod) params.append("localidadCod", filters.localidadCod);
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (informe) params.append("informe", informe);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
 }

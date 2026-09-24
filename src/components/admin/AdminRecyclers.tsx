@@ -10,6 +10,7 @@ import {
   FaSearch,
   FaEraser,
   FaFileExcel,
+  FaLock,
   FaIdCard,
   FaSpinner,
 } from "react-icons/fa";
@@ -28,6 +29,7 @@ import type { Barrio, Municipio } from "../../types/geo";
 import RecyclersTable from "./RecyclersTable";
 import RecyclerFormModal from "./RecyclerFormModal";
 import ExportarRecyclersModal from "./ExportarRecyclersModal";
+import CerrarCensoModal from "./CerrarCensoModal";
 
 interface KpiCardProps {
   label: string;
@@ -130,12 +132,12 @@ export default function AdminRecyclers() {
   const [descargandoCertificadoId, setDescargandoCertificadoId] = useState<number | null>(null);
   const [editingRecycler, setEditingRecycler] = useState<EditingState>(null);
   const [mostrarExportar, setMostrarExportar] = useState(false);
+  const [mostrarCerrarCenso, setMostrarCerrarCenso] = useState(false);
 
   const [urlCertificadosGeneral, setUrlCertificadosGeneral] = useState<string | null>(null);
   const [actualizandoCertificados, setActualizandoCertificados] = useState(false);
   const certificadosPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const certificadosPollIntentosRef = useRef(0);
-
 
   // Cambiar de ciudad limpia barrioFiltro, en el mismo evento (no en un
   // efecto aparte) — un barrio de Barranquilla no existe al ver Puerto
@@ -402,6 +404,18 @@ export default function AdminRecyclers() {
             {actualizandoCertificados ? "Actualizando certificados..." : "Exportar Certificados"}
           </button>
           <button
+            onClick={() => setMostrarCerrarCenso(true)}
+            disabled={ciudadFiltro === "SIN_CIUDAD"}
+            title={
+              ciudadFiltro === "SIN_CIUDAD"
+                ? "El censo se cierra por ciudad: elige Barranquilla o Puerto Colombia"
+                : "Cierra el censo de la ciudad activa (no se puede deshacer)"
+            }
+            className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-5 py-2.5 text-sm font-bold text-red-700 shadow-sm transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FaLock /> Cerrar censo
+          </button>
+          <button
             onClick={() => setEditingRecycler("new")}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
           >
@@ -411,6 +425,17 @@ export default function AdminRecyclers() {
       </div>
 
       {mostrarExportar && <ExportarRecyclersModal onClose={() => setMostrarExportar(false)} />}
+
+      {mostrarCerrarCenso && ciudadFiltro !== "SIN_CIUDAD" && (
+        <CerrarCensoModal
+          municipio={ciudadFiltro}
+          onClose={() => setMostrarCerrarCenso(false)}
+          onCerrado={() => {
+            refresh();
+            iniciarEscuchaCertificados();
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard

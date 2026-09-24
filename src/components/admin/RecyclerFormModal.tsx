@@ -214,7 +214,15 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
               <label className="block text-sm font-bold text-gray-700">Clasificación</label>
               <select
                 value={values.clasificacion}
-                onChange={(e) => update("clasificacion", e.target.value as Clasificacion)}
+                onChange={(e) => {
+                  const clasificacion = e.target.value as Clasificacion;
+                  // Un reciclador nuevo nunca puede estar censado.
+                  setValues((prev) => ({
+                    ...prev,
+                    clasificacion,
+                    censado: clasificacion === "NUEVO" ? false : prev.censado,
+                  }));
+                }}
                 className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
                 {Object.entries(CLASIFICACION_LABELS).map(([value, label]) => (
@@ -241,11 +249,17 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
                 type="checkbox"
                 id="censado"
                 checked={values.censado}
+                disabled={values.clasificacion === "NUEVO"}
                 onChange={(e) => update("censado", e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <label htmlFor="censado" className="text-sm font-bold text-gray-700">
                 Censado
+                {values.clasificacion === "NUEVO" && (
+                  <span className="ml-1 text-xs font-normal text-gray-400">
+                    (un reciclador nuevo no puede estar censado)
+                  </span>
+                )}
               </label>
             </div>
           </div>
