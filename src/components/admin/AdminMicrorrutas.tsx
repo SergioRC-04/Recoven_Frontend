@@ -317,35 +317,43 @@ export default function AdminMicrorrutas() {
 
   // ─── Derivados ──────────────────────────────────────────────────────────────
 
-  const trabajadorPorMicrorrutaId = new Map<number, string>();
-  const clasificacionPorMicrorrutaId = new Map<number, Clasificacion>();
-  recyclers.forEach((r) => {
-    r.microrrutas.forEach((m) => {
-      if (!trabajadorPorMicrorrutaId.has(m.id)) {
-        trabajadorPorMicrorrutaId.set(m.id, r.nombreCompleto);
-        clasificacionPorMicrorrutaId.set(m.id, r.clasificacion);
-      }
+  // Todo lo que alimenta al mapa está memoizado a propósito: si estos
+  // objetos se recrearan en cada render, el mapa vería "datos nuevos"
+  // cada vez que el usuario selecciona una ruta o marca una casilla y se
+  // reencuadraría, quitándole el control de la cámara.
+  const { trabajadorPorMicrorrutaId, clasificacionPorMicrorrutaId } = useMemo(() => {
+    const trabajador = new Map<number, string>();
+    const clasificacion = new Map<number, Clasificacion>();
+    recyclers.forEach((r) => {
+      r.microrrutas.forEach((m) => {
+        if (!trabajador.has(m.id)) {
+          trabajador.set(m.id, r.nombreCompleto);
+          clasificacion.set(m.id, r.clasificacion);
+        }
+      });
     });
-  });
+    return { trabajadorPorMicrorrutaId: trabajador, clasificacionPorMicrorrutaId: clasificacion };
+  }, [recyclers]);
 
   // Búsqueda por nombre del reciclador — filtro en memoria (no viaja al
   // backend, no hace falta: recyclers ya se cargó completo al montar) que
   // se aplica ANTES de derivar microrrutasList, así el mapa y la tabla
   // muestran exactamente el mismo subconjunto de rutas.
-  const busquedaTrabajadorLower = searchTrabajador.trim().toLowerCase();
-  const microrrutasGeoFiltrado =
-    !microrrutasGeo || !busquedaTrabajadorLower
-      ? microrrutasGeo
-      : {
-          type: "FeatureCollection" as const,
-          features: microrrutasGeo.features.filter((f) =>
-            (trabajadorPorMicrorrutaId.get(f.properties.id) ?? "")
-              .toLowerCase()
-              .includes(busquedaTrabajadorLower)
-          ),
-        };
+  const microrrutasGeoFiltrado = useMemo(() => {
+    const busqueda = searchTrabajador.trim().toLowerCase();
+    if (!microrrutasGeo || !busqueda) return microrrutasGeo;
+    return {
+      type: "FeatureCollection" as const,
+      features: microrrutasGeo.features.filter((f) =>
+        (trabajadorPorMicrorrutaId.get(f.properties.id) ?? "").toLowerCase().includes(busqueda)
+      ),
+    };
+  }, [microrrutasGeo, searchTrabajador, trabajadorPorMicrorrutaId]);
 
-  const microrrutasList = microrrutasGeoFiltrado?.features?.map((f) => f.properties) ?? [];
+  const microrrutasList = useMemo(
+    () => microrrutasGeoFiltrado?.features?.map((f) => f.properties) ?? [],
+    [microrrutasGeoFiltrado]
+  );
 
   // Marca/desmarca de una sola vez todas las que la tabla tiene listadas
   // AHORA MISMO (respetando el filtro de trabajador activo) — no toca el
@@ -364,15 +372,15 @@ export default function AdminMicrorrutas() {
   // Solo para el mapa: además del filtro de búsqueda, se quitan las
   // marcadas como ocultas a mano — la tabla (microrrutasList, arriba)
   // sigue mostrándolas todas, con su casilla desmarcada.
-  const microrrutasGeoParaMapa =
-    !microrrutasGeoFiltrado || microrrutasOcultasIds.size === 0
-      ? microrrutasGeoFiltrado
-      : {
-          type: "FeatureCollection" as const,
-          features: microrrutasGeoFiltrado.features.filter(
-            (f) => !microrrutasOcultasIds.has(f.properties.id)
-          ),
-        };
+  const microrrutasGeoParaMapa = useMemo(() => {
+    if (!microrrutasGeoFiltrado || microrrutasOcultasIds.size === 0) return microrrutasGeoFiltrado;
+    return {
+      type: "FeatureCollection" as const,
+      features: microrrutasGeoFiltrado.features.filter(
+        (f) => !microrrutasOcultasIds.has(f.properties.id)
+      ),
+    };
+  }, [microrrutasGeoFiltrado, microrrutasOcultasIds]);
 
   const conteosMicrorrutas = calcularConteosMicrorrutas(todasLasMicrorrutas);
   const localidadesOrdenadas = ordenarPorConteo(
@@ -861,6 +869,7 @@ export default function AdminMicrorrutas() {
         barriosGeoJson={barriosGeo}
         viasGeoJson={viasGeo}
         microrrutasGeoJson={microrrutasGeoParaMapa}
+        encuadreKey={microrrutasGeo}
         pendingGeojson={formModalState?.mode === "create" ? formModalState.geojson : null}
         drawing={drawing}
         editingGeometriaId={editingGeometriaId}

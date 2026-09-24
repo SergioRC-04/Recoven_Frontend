@@ -26,6 +26,7 @@ const EMPTY_VALUES: RecyclerFormValues = {
   tipoDocumento: "CEDULA_CIUDADANIA",
   cedula: "",
   nombreCompleto: "",
+  telefono: "",
   censado: false,
   clasificacion: "NUEVO",
   detalleUbicacion: "",
@@ -192,6 +193,19 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
                 required
                 value={values.nombreCompleto}
                 onChange={(e) => update("nombreCompleto", e.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700">Teléfono (opcional)</label>
+              <input
+                type="tel"
+                inputMode="tel"
+                maxLength={20}
+                value={values.telefono}
+                onChange={(e) => update("telefono", e.target.value)}
+                placeholder="3001234567"
                 className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>

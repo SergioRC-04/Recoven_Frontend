@@ -93,9 +93,38 @@ export default function AdminRecyclers() {
   // en AdminMicrorrutas.tsx.
   const [barrios, setBarrios] = useState<Barrio[]>([]);
 
-  // null = cargando, [] o array con datos = cargado.
-  const [recyclers, setRecyclers] = useState<Recycler[] | null>(null);
-  const loading = recyclers === null;
+  // Contador de refresco — incrementar fuerza una recarga de la tabla sin
+  // pasar una función async como dependencia de useEffect. Ya no hace
+  // falta un contador aparte para KPIs: se calculan derivados de
+  // `recyclers` (ver más abajo), así que se actualizan solos cada vez que
+  // la tabla lo hace.
+  const [tableKey, setTableKey] = useState(0);
+  const refresh = () => setTableKey((k) => k + 1);
+
+  // Último resultado recibido, junto con la clave de filtros con la que se
+  // pidió. Mientras se pide uno nuevo (p. ej. al escribir en el buscador)
+  // se SIGUE mostrando el anterior en vez de vaciar la tabla: si se
+  // vaciara, la página se encogería unos instantes y el navegador
+  // mandaría el scroll de vuelta arriba. `loading` se deriva comparando
+  // claves, no se guarda aparte.
+  const [resultado, setResultado] = useState<{ clave: string; data: Recycler[] } | null>(null);
+  const recyclers = resultado?.data ?? null;
+  const claveConsulta = JSON.stringify([
+    ciudadFiltro,
+    estadoFiltro,
+    rutasFiltro,
+    clasificacionFiltro,
+    censoFiltro,
+    barrioFiltro,
+    search,
+    tableKey,
+  ]);
+  const loading = resultado === null || resultado.clave !== claveConsulta;
+  const cargandoPrimeraVez = resultado === null;
+  // Actualización local de una fila (p. ej. censo) sin recargar: conserva
+  // la clave del resultado actual para no marcarlo como "cargando".
+  const setRecyclers = (actualizar: (prev: Recycler[]) => Recycler[]) =>
+    setResultado((prev) => (prev ? { ...prev, data: actualizar(prev.data) } : prev));
 
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [descargandoCertificadoId, setDescargandoCertificadoId] = useState<number | null>(null);
@@ -107,13 +136,6 @@ export default function AdminRecyclers() {
   const certificadosPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const certificadosPollIntentosRef = useRef(0);
 
-  // Contador de refresco — incrementar fuerza una recarga de la tabla sin
-  // pasar una función async como dependencia de useEffect. Ya no hace
-  // falta un contador aparte para KPIs: se calculan derivados de
-  // `recyclers` (ver más abajo), así que se actualizan solos cada vez que
-  // la tabla lo hace.
-  const [tableKey, setTableKey] = useState(0);
-  const refresh = () => setTableKey((k) => k + 1);
 
   // Cambiar de ciudad limpia barrioFiltro, en el mismo evento (no en un
   // efecto aparte) — un barrio de Barranquilla no existe al ver Puerto
@@ -165,18 +187,15 @@ export default function AdminRecyclers() {
     })
       .then((data) => {
         if (tableRequestIdRef.current !== requestId) return; // respuesta obsoleta, se ignora
-        setRecyclers(data);
+        setResultado({ clave: claveConsulta, data });
       })
       .catch((err) => {
         if (tableRequestIdRef.current !== requestId) return;
         console.error("Error cargando recicladores:", err);
-        setRecyclers([]);
+        setResultado({ clave: claveConsulta, data: [] });
       });
-
-    return () => {
-      setRecyclers(null); // → loading = true durante el siguiente fetch
-    };
   }, [
+    claveConsulta,
     ciudadFiltro,
     estadoFiltro,
     rutasFiltro,
@@ -267,9 +286,8 @@ export default function AdminRecyclers() {
       // Solo esa fila cambió — se actualiza en el estado local en vez de
       // recargar toda la tabla desde el backend. Los KPIs de censo se
       // recalculan solos, al ser derivados de este mismo array.
-      setRecyclers(
-        (prev) =>
-          prev?.map((r) => (r.id === recycler.id ? { ...r, censado: !r.censado } : r)) ?? prev
+      setRecyclers((prev) =>
+        prev.map((r) => (r.id === recycler.id ? { ...r, censado: !r.censado } : r))
       );
       iniciarEscuchaCertificados();
     } catch (error) {
@@ -583,20 +601,22 @@ export default function AdminRecyclers() {
         </button>
       </div>
 
-      {loading ? (
+      {cargandoPrimeraVez ? (
         <div className="py-10 text-center text-gray-400">Cargando recicladores...</div>
       ) : (
-        <RecyclersTable
-          recyclers={recyclers ?? []}
-          isHistorico={estadoFiltro === "desvinculados"}
-          togglingIds={togglingIds}
-          descargandoCertificadoId={descargandoCertificadoId}
-          onEdit={setEditingRecycler}
-          onToggleCenso={handleToggleCenso}
-          onDesvincular={handleDesvincular}
-          onReactivar={handleReactivar}
-          onDescargarCertificado={handleDescargarCertificado}
-        />
+        <div className={loading ? "opacity-60 transition-opacity" : "transition-opacity"}>
+          <RecyclersTable
+            recyclers={recyclers ?? []}
+            isHistorico={estadoFiltro === "desvinculados"}
+            togglingIds={togglingIds}
+            descargandoCertificadoId={descargandoCertificadoId}
+            onEdit={setEditingRecycler}
+            onToggleCenso={handleToggleCenso}
+            onDesvincular={handleDesvincular}
+            onReactivar={handleReactivar}
+            onDescargarCertificado={handleDescargarCertificado}
+          />
+        </div>
       )}
 
       {editingRecycler === "new" && (

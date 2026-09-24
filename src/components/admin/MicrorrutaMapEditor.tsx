@@ -155,6 +155,14 @@ interface MicrorrutaMapEditorProps {
   // edita el trazo de una microrruta.
   viasGeoJson: GeoJsonFeatureCollection<ViaProperties> | null;
   microrrutasGeoJson: MicrorrutasGeoJson | null;
+  // Clave que decide CUÁNDO re-encuadrar la cámara a todas las rutas. Si
+  // se pasa, la cámara solo se mueve cuando esta clave cambia — no cada
+  // vez que cambia microrrutasGeoJson. Lo usa AdminMicrorrutas para que
+  // ocultar/mostrar rutas a mano o buscar por trabajador (que solo
+  // cambian QUÉ se dibuja) no le arrebaten la cámara al usuario; pasa
+  // aquí los datos crudos del backend. Sin ella, se re-encuadra siempre
+  // que cambie microrrutasGeoJson, como antes.
+  encuadreKey?: unknown;
   // Vista previa del trazo recién dibujado, mientras el formulario de creación está abierto.
   pendingGeojson: LineStringGeoJson | null;
   drawing: boolean;
@@ -178,6 +186,7 @@ export default function MicrorrutaMapEditor({
   barriosGeoJson,
   viasGeoJson,
   microrrutasGeoJson,
+  encuadreKey,
   pendingGeojson,
   drawing,
   editingGeometriaId,
@@ -462,11 +471,10 @@ export default function MicrorrutaMapEditor({
 
   // Refrescar la capa de microrrutas cuando cambian los datos del padre.
   // El estilo NO se toca aquí (lo decide el efecto dedicado de más
-  // arriba) — este efecto solo se ocupa de la fuente de datos y el
-  // encuadre de cámara.
+  // arriba) — este efecto solo se ocupa de la fuente de datos; el
+  // encuadre de cámara lo hace el efecto siguiente.
   useEffect(() => {
     const microrrutasLayer = microrrutasLayerRef.current;
-    const map = mapRef.current;
     if (!microrrutasLayer || !microrrutasGeoJson) return;
 
     // Envuelto en try/catch a propósito: si la forma real del GeoJSON que
@@ -481,29 +489,44 @@ export default function MicrorrutaMapEditor({
         }).readFeatures(microrrutasGeoJson),
       });
       microrrutasLayer.setSource(source);
-
-      // Esta capa solo controla el encuadre cuando NO hay un filtro de
-      // localidad/barrio activo — si lo hay, el efecto de barrios/localidad
-      // de arriba ya se encargó, y dejamos su encuadre intacto para no
-      // competir por la cámara (antes ambos efectos peleaban al limpiar
-      // filtros, produciendo un doble salto de zoom).
-      if (map && editingGeometriaId === null && !localidadCod && !barrioCod) {
-        const extent = source.getExtent();
-        if (extent && !isEmpty(extent)) {
-          map.getView().fit(extent, { padding: [40, 40, 40, 40], maxZoom: 16, duration: 400 });
-        } else {
-          // Sin microrrutas que encuadrar y sin filtro de ubicación: vista
-          // general de la ciudad en vez de quedarse donde estaba antes.
-          map.getView().animate({ center: CENTER_BARRANQUILLA, zoom: 12, duration: 400 });
-        }
-      }
     } catch (error) {
       console.error(
         "Error interpretando el GeoJSON de microrrutas (revisa la forma real de la respuesta de GET /microrrutas):",
         error
       );
     }
-  }, [microrrutasGeoJson, localidadCod, barrioCod, editingGeometriaId]);
+  }, [microrrutasGeoJson, editingGeometriaId]);
+
+  // Encuadre de cámara, separado de la fuente de datos de arriba para
+  // poder dispararse con su propia clave (encuadreKey) — así un cambio de
+  // QUÉ rutas se dibujan (ocultar/mostrar, búsqueda) no mueve la cámara.
+  // Corre después del efecto de la fuente (mismo commit, orden de
+  // declaración), así que lee la fuente ya actualizada.
+  //
+  // Solo controla el encuadre cuando NO hay un filtro de localidad/barrio
+  // activo — si lo hay, el efecto de barrios/localidad de arriba ya se
+  // encargó, y dejamos su encuadre intacto para no competir por la cámara
+  // (antes ambos efectos peleaban al limpiar filtros, produciendo un
+  // doble salto de zoom).
+  const claveEncuadre = encuadreKey ?? microrrutasGeoJson;
+  useEffect(() => {
+    const microrrutasLayer = microrrutasLayerRef.current;
+    const map = mapRef.current;
+    if (!map || !microrrutasLayer || !microrrutasGeoJson) return;
+    if (editingGeometriaId !== null || localidadCod || barrioCod) return;
+
+    const extent = microrrutasLayer.getSource()?.getExtent();
+    if (extent && !isEmpty(extent)) {
+      map.getView().fit(extent, { padding: [40, 40, 40, 40], maxZoom: 16, duration: 400 });
+    } else {
+      // Sin microrrutas que encuadrar y sin filtro de ubicación: vista
+      // general de la ciudad en vez de quedarse donde estaba antes.
+      map.getView().animate({ center: CENTER_BARRANQUILLA, zoom: 12, duration: 400 });
+    }
+    // microrrutasGeoJson solo se lee para saber si ya cargó; el disparo lo
+    // decide claveEncuadre a propósito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveEncuadre, localidadCod, barrioCod, editingGeometriaId]);
 
   // Vista previa del trazo pendiente: el recién dibujado para crear una ruta
   // (mientras el formulario de creación está abierto), o el trazo de

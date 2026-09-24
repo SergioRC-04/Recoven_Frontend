@@ -87,6 +87,8 @@ export interface Recycler {
   tipoDocumento: TipoDocumento;
   cedula: string;
   nombreCompleto: string;
+  // null en los recicladores registrados antes de que existiera este campo.
+  telefono: string | null;
   censado: boolean;
   clasificacion: Clasificacion;
   // Aclaración libre sobre la ubicación, además de los barrios asignados
@@ -139,6 +141,7 @@ export interface RecyclerFormValues {
   tipoDocumento: TipoDocumento;
   cedula: string;
   nombreCompleto: string;
+  telefono: string;
   censado: boolean;
   clasificacion: Clasificacion;
   detalleUbicacion: string;
@@ -166,6 +169,7 @@ export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
     tipoDocumento: recycler.tipoDocumento,
     cedula: recycler.cedula,
     nombreCompleto: recycler.nombreCompleto,
+    telefono: recycler.telefono ?? "",
     censado: recycler.censado,
     clasificacion: recycler.clasificacion,
     detalleUbicacion: recycler.detalleUbicacion ?? "",

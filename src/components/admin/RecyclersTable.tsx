@@ -117,6 +117,7 @@ export default function RecyclersTable({
               <th className="p-4">No.</th>
               <th className="p-4">Cédula</th>
               <th className="p-4">Nombre Completo</th>
+              <th className="p-4">Teléfono</th>
               <th className="p-4">Clasificación</th>
               <th className="p-4">Barrios</th>
               <th className="p-4">Rutas</th>
@@ -127,7 +128,7 @@ export default function RecyclersTable({
           <tbody className="divide-y divide-gray-100">
             {recyclers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-6 text-center text-gray-400">
+                <td colSpan={9} className="py-6 text-center text-gray-400">
                   No hay recicladores con estos filtros.
                 </td>
               </tr>
@@ -140,6 +141,9 @@ export default function RecyclersTable({
                   <td className="p-4 text-gray-400">{index + 1}</td>
                   <td className="p-4 font-mono text-xs font-bold text-gray-900">{r.cedula}</td>
                   <td className="p-4 font-medium text-gray-900">{r.nombreCompleto}</td>
+                  <td className="p-4 text-xs text-gray-600">
+                    {r.telefono ?? <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="p-4">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${CLASIFICACION_COLORS[r.clasificacion]}`}
@@ -177,6 +181,7 @@ export default function RecyclersTable({
                 <div className="min-w-0">
                   <p className="truncate font-bold text-gray-900">{r.nombreCompleto}</p>
                   <p className="font-mono text-xs text-gray-500">{r.cedula}</p>
+                  {r.telefono && <p className="text-xs text-gray-500">{r.telefono}</p>}
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${CLASIFICACION_COLORS[r.clasificacion]}`}
