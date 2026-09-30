@@ -275,7 +275,14 @@ export default function AdminMicrorrutas() {
       features = features.filter((f) => f.properties.identificador === selectedBarrio);
     }
 
-    if (!selectedLocalidad && !selectedBarrio) {
+    // Puerto Colombia no tiene localidades, así que ahí nunca hay una que
+    // seleccionar — sin este caso, el mapa nunca mostraría los barrios por
+    // defecto. Se muestran siempre (mismo diseño que Barranquilla al
+    // elegir una localidad), salvo que se filtre a un barrio puntual, ya
+    // cubierto arriba.
+    const mostrarBarriosPorDefecto = selectedCiudad === "PUERTO_COLOMBIA";
+
+    if (!selectedLocalidad && !selectedBarrio && !mostrarBarriosPorDefecto) {
       return null;
     }
 
@@ -283,7 +290,7 @@ export default function AdminMicrorrutas() {
       type: "FeatureCollection",
       features,
     };
-  }, [todosLosBarriosGeo, selectedLocalidad, selectedBarrio]);
+  }, [todosLosBarriosGeo, selectedLocalidad, selectedBarrio, selectedCiudad]);
 
   // ─── Carga de microrrutas según filtros ─────────────────────────────────────
 

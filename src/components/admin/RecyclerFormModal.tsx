@@ -5,7 +5,7 @@ import { createRecycler, updateRecycler, exportarCertificado } from "../../servi
 import { descargarBlob } from "../../lib/descargarBlob";
 import { getMicrorrutasList } from "../../services/microrutas";
 import { getBarriosList } from "../../services/geo";
-import type { Barrio } from "../../types/geo";
+import type { Barrio, Municipio } from "../../types/geo";
 import {
   CLASIFICACION_LABELS,
   TIPO_DOCUMENTO_LABELS,
@@ -16,9 +16,19 @@ import {
   type TipoDocumento,
 } from "../../types/recycler";
 
+// `municipio`: ciudad activa en AdminRecyclers (la de la pestaña, no la del
+// reciclador) — limita los barrios y microrrutas que se ofrecen a los de
+// esa ciudad. undefined cuando la pestaña es "Sin ciudad" (no hay con qué
+// filtrar) y ahí se siguen mostrando todos, de ambas ciudades.
 type RecyclerFormModalProps =
-  | { mode: "create"; onClose: () => void; onSaved: () => void }
-  | { mode: "edit"; recycler: Recycler; onClose: () => void; onSaved: () => void };
+  | { mode: "create"; municipio?: Municipio; onClose: () => void; onSaved: () => void }
+  | {
+      mode: "edit";
+      recycler: Recycler;
+      municipio?: Municipio;
+      onClose: () => void;
+      onSaved: () => void;
+    };
 
 const FECHA_INGRESO_DEFAULT = new Date().toISOString().split("T")[0];
 
@@ -36,7 +46,7 @@ const EMPTY_VALUES: RecyclerFormValues = {
 };
 
 export default function RecyclerFormModal(props: RecyclerFormModalProps) {
-  const { mode, onClose, onSaved } = props;
+  const { mode, municipio, onClose, onSaved } = props;
   const initial = props.mode === "edit" ? toRecyclerFormValues(props.recycler) : EMPTY_VALUES;
 
   const [values, setValues] = useState<RecyclerFormValues>(initial);
@@ -50,8 +60,8 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
     const loadOptions = async () => {
       try {
         const [barriosData, microrrutasData] = await Promise.all([
-          getBarriosList(),
-          getMicrorrutasList(),
+          getBarriosList(undefined, municipio),
+          getMicrorrutasList(municipio),
         ]);
         const barriosOrdenados = [...barriosData].sort((a, b) =>
           a.nombre_barrio.localeCompare(b.nombre_barrio, "es")
@@ -68,7 +78,7 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
       }
     };
     loadOptions();
-  }, []);
+  }, [municipio]);
 
   const update = <K extends keyof RecyclerFormValues>(key: K, value: RecyclerFormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));

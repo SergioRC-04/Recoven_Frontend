@@ -123,10 +123,13 @@ function toMicrorrutaFeature(item: MicrorrutaApiItem): MicrorrutaFeature | null 
 
 /**
  * Versión liviana: solo id/nombre, para poblar selectores (p. ej. el
- * multi-select de microrrutas en el formulario de recicladores).
+ * multi-select de microrrutas en el formulario de recicladores). Con
+ * `municipio`, solo trae las de esa ciudad.
  */
-export async function getMicrorrutasList(): Promise<{ id: number; nombre: string }[]> {
-  const geojson = await getMicrorrutas();
+export async function getMicrorrutasList(
+  municipio?: Municipio
+): Promise<{ id: number; nombre: string }[]> {
+  const geojson = await getMicrorrutas(municipio ? { municipio } : undefined);
   return geojson.features.map((f) => ({ id: f.properties.id, nombre: f.properties.nombre }));
 }
 

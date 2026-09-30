@@ -424,7 +424,19 @@ export default function AdminRecyclers() {
         </div>
       </div>
 
-      {mostrarExportar && <ExportarRecyclersModal onClose={() => setMostrarExportar(false)} />}
+      {mostrarExportar && (
+        <ExportarRecyclersModal
+          onClose={() => setMostrarExportar(false)}
+          municipio={ciudadFiltro}
+          municipioLabel={
+            ciudadFiltro === "BARRANQUILLA"
+              ? "Barranquilla"
+              : ciudadFiltro === "PUERTO_COLOMBIA"
+                ? "Puerto Colombia"
+                : "recicladores sin ciudad"
+          }
+        />
+      )}
 
       {mostrarCerrarCenso && ciudadFiltro !== "SIN_CIUDAD" && (
         <CerrarCensoModal
@@ -647,6 +659,7 @@ export default function AdminRecyclers() {
       {editingRecycler === "new" && (
         <RecyclerFormModal
           mode="create"
+          municipio={ciudadFiltro === "SIN_CIUDAD" ? undefined : ciudadFiltro}
           onClose={() => setEditingRecycler(null)}
           onSaved={handleRecyclerSaved}
         />
@@ -655,6 +668,7 @@ export default function AdminRecyclers() {
         <RecyclerFormModal
           mode="edit"
           recycler={editingRecycler}
+          municipio={ciudadFiltro === "SIN_CIUDAD" ? undefined : ciudadFiltro}
           onClose={() => setEditingRecycler(null)}
           onSaved={handleRecyclerSaved}
         />

@@ -3,24 +3,34 @@ import { useState } from "react";
 import { FaTimes, FaFileExcel, FaSpinner } from "react-icons/fa";
 import { exportarRecyclers } from "../../services/recyclers";
 import { TIPOS_EXPORT_RECYCLERS, type TipoExportRecyclers } from "../../types/recycler";
+import type { Municipio } from "../../types/geo";
 
 interface ExportarRecyclersModalProps {
   onClose: () => void;
+  // Ciudad activa en AdminRecyclers — cada export se limita a ella.
+  // undefined en la pestaña "Sin ciudad" (ahí se exportan todas).
+  municipio?: Municipio | "SIN_CIUDAD";
+  municipioLabel: string;
 }
 
 /**
  * Modal con los 6 reportes de recicladores exportables en Excel (con
  * colores de Censo/Rutas/Clasificación aplicados en el backend). Cada
  * botón dispara su propia descarga; se bloquean entre sí mientras una está
- * en curso, para no lanzar varias generaciones de Excel a la vez.
+ * en curso, para no lanzar varias generaciones de Excel a la vez. Todos se
+ * exportan filtrados a la ciudad activa del admin.
  */
-export default function ExportarRecyclersModal({ onClose }: ExportarRecyclersModalProps) {
+export default function ExportarRecyclersModal({
+  onClose,
+  municipio,
+  municipioLabel,
+}: ExportarRecyclersModalProps) {
   const [exportando, setExportando] = useState<TipoExportRecyclers | null>(null);
 
   const handleExportar = async (tipo: TipoExportRecyclers) => {
     setExportando(tipo);
     try {
-      const blob = await exportarRecyclers(tipo);
+      const blob = await exportarRecyclers(tipo, municipio);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -44,6 +54,9 @@ export default function ExportarRecyclersModal({ onClose }: ExportarRecyclersMod
           <div>
             <h2 className="text-xl font-bold text-gray-900">Exportar recicladores</h2>
             <p className="mt-1 text-xs text-gray-500">Descarga en Excel, con colores por estado.</p>
+            <p className="mt-1 text-xs font-semibold text-emerald-700">
+              Solo {municipioLabel}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <FaTimes className="text-xl" />

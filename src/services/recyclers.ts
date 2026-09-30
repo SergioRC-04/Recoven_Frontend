@@ -10,6 +10,7 @@ import type {
   CierreCensoPreview,
   CierreCensoResultado,
 } from "../types/recycler";
+import type { Municipio } from "../types/geo";
 
 // Todos los endpoints del módulo comparten la misma base /recyclers.
 // El guard JwtAuthGuard está aplicado a nivel de clase en el controller,
@@ -113,8 +114,13 @@ export async function asignarMicrorrutaARecycler(
  *
  * Controller: GET /recyclers/exportar?tipo=...  (JwtAuthGuard)
  */
-export async function exportarRecyclers(tipo: TipoExportRecyclers): Promise<Blob> {
-  return recovenApi.getBlob(`/recyclers/exportar?tipo=${tipo}`, true);
+export async function exportarRecyclers(
+  tipo: TipoExportRecyclers,
+  municipio?: Municipio | "SIN_CIUDAD"
+): Promise<Blob> {
+  const params = new URLSearchParams({ tipo });
+  if (municipio) params.append("municipio", municipio);
+  return recovenApi.getBlob(`/recyclers/exportar?${params.toString()}`, true);
 }
 
 /**
