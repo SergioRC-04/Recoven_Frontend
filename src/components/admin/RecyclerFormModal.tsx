@@ -109,6 +109,12 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
     });
   };
 
+  // Con alguna microrruta asignada, el barrio deja de ser manual: el
+  // backend lo deriva del de esa(s) ruta(s) y ya ignora barriosIds (ver
+  // recycler-barrios-sync.util.ts) — el checklist de abajo solo refleja
+  // ese hecho, deshabilitándose.
+  const tieneMicrorrutas = values.microrrutasIds.length > 0;
+
   const descargarCertificado = async (id: number, nombreCompleto: string) => {
     try {
       const blob = await exportarCertificado(id);
@@ -280,27 +286,39 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* Barrios: lista de checkboxes con scroll */}
+              {/* Barrios: lista de checkboxes con scroll. Deshabilitada
+                  mientras tenga alguna microrruta asignada — ahí el barrio
+                  se calcula solo, a partir del de esa(s) ruta(s), y editarlo
+                  a mano no tendría efecto al guardar. */}
               <div>
                 <label className="block text-sm font-bold text-gray-700">Barrios asignados</label>
-                <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-300 p-2">
+                <div
+                  className={`mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-300 p-2 ${
+                    tieneMicrorrutas ? "opacity-50" : ""
+                  }`}
+                >
                   {barrios.map((b) => (
                     <label
                       key={b.identificador}
-                      className="flex items-center gap-2 py-1 hover:bg-gray-50"
+                      className={`flex items-center gap-2 py-1 ${
+                        tieneMicrorrutas ? "" : "hover:bg-gray-50"
+                      }`}
                     >
                       <input
                         type="checkbox"
                         checked={values.barriosIds.includes(b.identificador)}
                         onChange={() => toggleBarrio(b.identificador)}
-                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        disabled={tieneMicrorrutas}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed"
                       />
                       <span className="text-sm text-gray-700">{b.nombre_barrio}</span>
                     </label>
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-gray-400">
-                  Haz clic en cada barrio para seleccionarlo o deseleccionarlo.
+                  {tieneMicrorrutas
+                    ? "Se calcula automáticamente del barrio de la(s) microrruta(s) asignada(s) abajo — no es editable mientras tenga alguna."
+                    : "Haz clic en cada barrio para seleccionarlo o deseleccionarlo."}
                 </p>
               </div>
 
