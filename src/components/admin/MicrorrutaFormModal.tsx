@@ -18,6 +18,11 @@ import {
 } from "../../types/microrruta";
 import FieldHelp from "./FieldHelp";
 
+// Mismo texto exacto que lanza el backend (MENSAJE_NOMBRE_DUPLICADO en
+// microrrutas.service.ts) cuando el índice único de `nombre` rechaza el
+// guardado — se usa para distinguir este caso de cualquier otro error.
+const MENSAJE_NOMBRE_DUPLICADO = "Ya existe una microrruta con ese nombre.";
+
 type MicrorrutaFormModalProps =
   | {
       mode: "create";
@@ -39,6 +44,12 @@ type MicrorrutaFormModalProps =
       // inmediato. Opcional: si no se pasa, el flujo de creación queda
       // igual que antes.
       onCreated?: (microrruta: MicrorrutaProperties) => void;
+      // Recalcula el siguiente nombre disponible a partir del estado
+      // actual de la BD — se usa cuando el guardado falla porque otra
+      // persona tomó el nombre sugerido justo antes (misma función que ya
+      // calculó `nombreSugerido`, ver AdminMicrorrutas.tsx). Opcional: sin
+      // ella, el choque solo muestra el mensaje de error, sin auto-relleno.
+      onReintentarNombre?: (geojson: LineStringGeoJson) => Promise<string | undefined>;
     }
   | {
       mode: "edit";
@@ -168,7 +179,31 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
       }
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al guardar la microrruta.");
+      const mensaje = err instanceof Error ? err.message : "Error al guardar la microrruta.";
+
+      // Choque de nombres: alguien más guardó con el mismo nombre sugerido
+      // justo antes. Solo al crear (no hay nombre sugerido al editar) y
+      // solo si el padre nos dio cómo recalcularlo — si no, se muestra el
+      // mensaje tal cual y la persona lo cambia a mano.
+      if (
+        mensaje === MENSAJE_NOMBRE_DUPLICADO &&
+        props.mode === "create" &&
+        props.onReintentarNombre
+      ) {
+        const nombreAnterior = values.nombre;
+        const nuevoNombre = await props.onReintentarNombre(props.geojson);
+        if (nuevoNombre) {
+          setValues((prev) => ({ ...prev, nombre: nuevoNombre }));
+          setError(
+            `Alguien más acaba de crear una microrruta con el nombre "${nombreAnterior}". ` +
+              `Se sugirió uno nuevo: "${nuevoNombre}" — revisa y dale a Guardar otra vez.`
+          );
+        } else {
+          setError(mensaje + " Cámbialo e intenta de nuevo.");
+        }
+      } else {
+        setError(mensaje);
+      }
     } finally {
       setLoading(false);
     }

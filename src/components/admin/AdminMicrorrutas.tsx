@@ -1091,6 +1091,7 @@ export default function AdminMicrorrutas() {
           geojson={formModalState.geojson}
           distanciaTotalKm={formModalState.distanciaTotalKm}
           nombreSugerido={formModalState.nombreSugerido}
+          onReintentarNombre={sugerirNombreMicrorruta}
           onClose={handleCloseModal}
           onSaved={refresh}
           onCreated={(mr) => setAsignandoTrabajadorPara(mr)}
