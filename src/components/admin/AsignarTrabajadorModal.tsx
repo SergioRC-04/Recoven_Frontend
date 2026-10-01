@@ -6,7 +6,11 @@ import type { Recycler } from "../../types/recycler";
 import type { MicrorrutaProperties } from "../../types/microrruta";
 
 interface AsignarTrabajadorModalProps {
-  microrruta: MicrorrutaProperties;
+  // Ausente cuando se usa ANTES de crear la microrruta (todavía no tiene
+  // id) — ahí la elección no se asigna de una vez, se devuelve al padre
+  // con onElegido para que la use al llenar/guardar el formulario de
+  // creación.
+  microrruta?: MicrorrutaProperties;
   // Lista completa de recicladores activos — la misma que ya carga
   // AdminMicrorrutas.tsx para la columna "Trabajador" de la tabla, no una
   // petición aparte.
@@ -14,7 +18,12 @@ interface AsignarTrabajadorModalProps {
   onClose: () => void;
   // Se llama tras asignar con éxito — el padre refresca los datos para
   // que la columna "Trabajador" de la tabla recoja la nueva asignación.
-  onAssigned: () => void;
+  // Solo aplica cuando sí hay `microrruta` (el modo de hoy).
+  onAssigned?: () => void;
+  // Solo para el modo sin `microrruta`: se llama con el reciclador elegido
+  // en vez de asignarlo ya (todavía no existe la microrruta a la que
+  // asignarlo).
+  onElegido?: (recycler: Recycler) => void;
 }
 
 export default function AsignarTrabajadorModal({
@@ -22,6 +31,7 @@ export default function AsignarTrabajadorModal({
   recyclers,
   onClose,
   onAssigned,
+  onElegido,
 }: AsignarTrabajadorModalProps) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -41,11 +51,20 @@ export default function AsignarTrabajadorModal({
 
   const handleAsignar = async () => {
     if (selectedId === null) return;
+
+    // Sin microrruta todavía (se está eligiendo ANTES de crearla): no hay
+    // nada que asignar en el backend aún, solo se devuelve la elección.
+    if (!microrruta) {
+      const elegido = recyclers.find((r) => r.id === selectedId);
+      if (elegido) onElegido?.(elegido);
+      return;
+    }
+
     setAsignando(true);
     setError(null);
     try {
       await asignarMicrorrutaARecycler(selectedId, microrruta.id);
-      onAssigned();
+      onAssigned?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo asignar el trabajador.");
     } finally {
@@ -63,9 +82,18 @@ export default function AsignarTrabajadorModal({
               ¿Asignar un trabajador?
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              La microrruta <span className="font-semibold text-gray-700">{microrruta.nombre}</span>{" "}
-              se creó correctamente. Elige quién la va a recorrer, o cierra esta ventana para
-              hacerlo más tarde.
+              {microrruta ? (
+                <>
+                  La microrruta{" "}
+                  <span className="font-semibold text-gray-700">{microrruta.nombre}</span> se creó
+                  correctamente. Elige quién la va a recorrer, o cierra esta ventana para hacerlo
+                  más tarde.
+                </>
+              ) : (
+                "Elige quién va a recorrer esta microrruta nueva — se usará su fecha de ingreso " +
+                "como fecha de operación sugerida (editable igual). Cierra esta ventana para " +
+                "decidirlo más tarde."
+              )}
             </p>
           </div>
           <button onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600">
@@ -147,7 +175,7 @@ export default function AsignarTrabajadorModal({
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {asignando ? <FaSpinner className="animate-spin" /> : <FaUserCheck />}
-            Asignar
+            {microrruta ? "Asignar" : "Elegir"}
           </button>
         </div>
       </div>

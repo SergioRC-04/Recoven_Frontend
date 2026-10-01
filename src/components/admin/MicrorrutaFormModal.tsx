@@ -17,6 +17,7 @@ import {
   type MicrorrutaProperties,
 } from "../../types/microrruta";
 import FieldHelp from "./FieldHelp";
+import type { Recycler } from "../../types/recycler";
 
 // Mismo texto exacto que lanza el backend (MENSAJE_NOMBRE_DUPLICADO en
 // microrrutas.service.ts) cuando el índice único de `nombre` rechaza el
@@ -37,6 +38,12 @@ type MicrorrutaFormModalProps =
       // cualquier otro valor. undefined si no se pudo determinar (el
       // campo queda vacío, como antes de que existiera esta sugerencia).
       nombreSugerido?: string;
+      // Reciclador elegido ANTES de abrir este formulario (ver
+      // AdminMicrorrutas.tsx) — si viene, precarga "Fecha de operación"
+      // con su fecha de ingreso en vez de la de hoy. Sigue siendo
+      // editable como cualquier otro valor; undefined si no se eligió
+      // ninguno (el campo queda igual que siempre).
+      trabajadorPreseleccionado?: Recycler;
       onClose: () => void;
       onSaved: () => void;
       // Se llama solo al CREAR (no al editar), con la microrruta recién
@@ -99,7 +106,13 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
   const initial =
     props.mode === "edit"
       ? props.initialValues
-      : { ...EMPTY_VALUES, nombre: props.nombreSugerido ?? EMPTY_VALUES.nombre };
+      : {
+          ...EMPTY_VALUES,
+          nombre: props.nombreSugerido ?? EMPTY_VALUES.nombre,
+          fechaOperacion:
+            props.trabajadorPreseleccionado?.fechaIngreso.split("T")[0] ??
+            EMPTY_VALUES.fechaOperacion,
+        };
 
   const [values, setValues] = useState<MicrorrutaFormValues>(initial);
   const [dias, setDias] = useState<Set<number>>(parseDias(initial.diasFrecuencia));

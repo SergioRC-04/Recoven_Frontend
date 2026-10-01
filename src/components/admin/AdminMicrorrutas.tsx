@@ -22,7 +22,7 @@ import {
   exportarMicrorrutasTabla,
   getMacrorrutas,
 } from "../../services/microrutas";
-import { getRecyclers } from "../../services/recyclers";
+import { getRecyclers, asignarMicrorrutaARecycler } from "../../services/recyclers";
 import { calcularConteosMicrorrutas, ordenarPorConteo } from "../../lib/microrrutaConteos";
 import { puntoEnGeometria } from "../../lib/puntoEnPoligono";
 import type {
@@ -63,9 +63,23 @@ type FormModalState =
       // determinar la localidad (el campo simplemente queda vacío, como
       // antes de que existiera esta sugerencia).
       nombreSugerido?: string;
+      // Reciclador elegido en el paso previo (¿asignar trabajador?, antes
+      // de llegar a este formulario) — ver trazoPendiente más abajo.
+      // undefined si se trazó sin elegir ninguno.
+      trabajadorPreseleccionado?: Recycler;
     }
   | { mode: "edit"; microrruta: MicrorrutaProperties }
   | null;
+
+// Trazo recién terminado, en espera de que se responda "¿asignar
+// trabajador?" ANTES de abrir el formulario de creación (para poder
+// precargarle la fecha de operación con la de ingreso de ese reciclador,
+// si se elige uno) — ver handleDrawEnd.
+type TrazoPendiente = {
+  geojson: LineStringGeoJson;
+  distanciaTotalKm: number;
+  nombreSugerido?: string;
+};
 
 // Prefijo de nombre por localidad — NO es literalmente Localidades.nombre
 // (p. ej. "02" es "Norte - centro histórico" en la BD, pero las
@@ -141,6 +155,10 @@ export default function AdminMicrorrutas() {
   // nunca al editar una ya existente.
   const [asignandoTrabajadorPara, setAsignandoTrabajadorPara] =
     useState<MicrorrutaProperties | null>(null);
+  // Trazo recién terminado, esperando la respuesta a "¿asignar
+  // trabajador?" antes de abrir el formulario de creación — ver
+  // handleDrawEnd y TrazoPendiente más arriba.
+  const [trazoPendiente, setTrazoPendiente] = useState<TrazoPendiente | null>(null);
 
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
@@ -365,8 +383,16 @@ export default function AdminMicrorrutas() {
       editingGeometriaId !== null ||
       formModalState !== null ||
       asignandoTrabajadorPara !== null ||
+      trazoPendiente !== null ||
       mostrarExportarCapas;
-  }, [drawing, editingGeometriaId, formModalState, asignandoTrabajadorPara, mostrarExportarCapas]);
+  }, [
+    drawing,
+    editingGeometriaId,
+    formModalState,
+    asignandoTrabajadorPara,
+    trazoPendiente,
+    mostrarExportarCapas,
+  ]);
   useEffect(() => {
     const sincronizar = () => {
       if (document.visibilityState !== "visible" || ocupadoRef.current) return;
@@ -563,7 +589,11 @@ export default function AdminMicrorrutas() {
   const handleDrawEnd = async (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
     setDrawing(false);
     const nombreSugerido = await sugerirNombreMicrorruta(geojson);
-    setFormModalState({ mode: "create", geojson, distanciaTotalKm, nombreSugerido });
+    // Primero se pregunta si se le asigna un trabajador (para poder
+    // precargar la fecha de operación con la suya) — el formulario de
+    // creación se abre después, desde la respuesta a esa pregunta (ver
+    // el render de AsignarTrabajadorModal más abajo).
+    setTrazoPendiente({ geojson, distanciaTotalKm, nombreSugerido });
   };
 
   const handleCloseModal = () => setFormModalState(null);
@@ -981,7 +1011,10 @@ export default function AdminMicrorrutas() {
         viasGeoJson={viasGeo}
         microrrutasGeoJson={microrrutasGeoParaMapa}
         encuadreKey={`${selectedCiudad}|${selectedLocalidad}|${selectedBarrio}|${selectedMacrorruta}|${selectedEstado}|${refreshKey}|${microrrutasGeo ? "cargado" : "cargando"}`}
-        pendingGeojson={formModalState?.mode === "create" ? formModalState.geojson : null}
+        pendingGeojson={
+          trazoPendiente?.geojson ??
+          (formModalState?.mode === "create" ? formModalState.geojson : null)
+        }
         drawing={drawing}
         editingGeometriaId={editingGeometriaId}
         onDrawEnd={handleDrawEnd}
@@ -1091,10 +1124,24 @@ export default function AdminMicrorrutas() {
           geojson={formModalState.geojson}
           distanciaTotalKm={formModalState.distanciaTotalKm}
           nombreSugerido={formModalState.nombreSugerido}
+          trabajadorPreseleccionado={formModalState.trabajadorPreseleccionado}
           onReintentarNombre={sugerirNombreMicrorruta}
           onClose={handleCloseModal}
           onSaved={refresh}
-          onCreated={(mr) => setAsignandoTrabajadorPara(mr)}
+          onCreated={(mr) => {
+            const trabajador = formModalState.trabajadorPreseleccionado;
+            if (trabajador) {
+              // Ya se decidió quién la recorre antes de crearla — se
+              // asigna directo, sin volver a preguntar.
+              asignarMicrorrutaARecycler(trabajador.id, mr.id)
+                .then(refresh)
+                .catch((err) =>
+                  console.error("Error asignando el trabajador preseleccionado:", err)
+                );
+            } else {
+              setAsignandoTrabajadorPara(mr);
+            }
+          }}
         />
       )}
       {formModalState?.mode === "edit" && (
@@ -1115,6 +1162,26 @@ export default function AdminMicrorrutas() {
           onAssigned={() => {
             setAsignandoTrabajadorPara(null);
             refresh();
+          }}
+        />
+      )}
+
+      {trazoPendiente && (
+        <AsignarTrabajadorModal
+          recyclers={recyclers}
+          onClose={() => {
+            // "Ahora no": se abre el formulario de creación igual que
+            // siempre, sin reciclador preseleccionado.
+            setFormModalState({ mode: "create", ...trazoPendiente });
+            setTrazoPendiente(null);
+          }}
+          onElegido={(recycler) => {
+            setFormModalState({
+              mode: "create",
+              ...trazoPendiente,
+              trabajadorPreseleccionado: recycler,
+            });
+            setTrazoPendiente(null);
           }}
         />
       )}
