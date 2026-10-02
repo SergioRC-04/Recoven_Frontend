@@ -147,6 +147,13 @@ export default function AdminMicrorrutas() {
   // acción directa sin nada que elegir.
   const [mostrarMenuInformes, setMostrarMenuInformes] = useState(false);
   const menuInformesRef = useRef<HTMLDivElement>(null);
+  // Cuál de las dos opciones con sub-variantes (Vigente/Nuevo/Todos) está
+  // desplegada dentro del menú "Informes" — null = ninguna. "Mapa de
+  // Macrorrutas" no usa esto, es una acción directa (solo tiene una
+  // opción).
+  const [submenuInformeAbierto, setSubmenuInformeAbierto] = useState<"excel" | "informe" | null>(
+    null
+  );
   const [mostrarExportarCapas, setMostrarExportarCapas] = useState(false);
   const [formModalState, setFormModalState] = useState<FormModalState>(null);
   // Microrruta recién creada, en espera de que el usuario elija (o no) un
@@ -190,13 +197,22 @@ export default function AdminMicrorrutas() {
 
   const isBusy = drawing || editingGeometriaId !== null;
 
+  // Cierra "Informes" y, de paso, el submenú (Vigente/Nuevo/Todos) que
+  // tuviera abierto — para que no quede desplegado la próxima vez que se
+  // vuelva a abrir desde cero. Se usa en vez de setMostrarMenuInformes(false)
+  // suelto en todos los puntos donde el menú se cierra.
+  const cerrarMenuInformes = () => {
+    setMostrarMenuInformes(false);
+    setSubmenuInformeAbierto(null);
+  };
+
   // Cierra el dropdown "Informes" al hacer clic afuera — patrón estándar,
   // no depende de ningún otro estado del componente.
   useEffect(() => {
     if (!mostrarMenuInformes) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (menuInformesRef.current && !menuInformesRef.current.contains(e.target as Node)) {
-        setMostrarMenuInformes(false);
+        cerrarMenuInformes();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -631,7 +647,7 @@ export default function AdminMicrorrutas() {
     }
   };
 
-  const handleGenerarReporteTodas = async (informe: InformeSui) => {
+  const handleGenerarReporteTodas = async (informe?: InformeSui) => {
     const features = microrrutasGeo?.features ?? [];
     if (features.length === 0) {
       alert("No hay microrrutas para exportar con el filtro actual.");
@@ -657,7 +673,7 @@ export default function AdminMicrorrutas() {
     }
   };
 
-  const handleDescargarExcel = async (informe: InformeSui) => {
+  const handleDescargarExcel = async (informe?: InformeSui) => {
     setDescargandoExcel(true);
     try {
       const blob = await exportarMicrorrutasExcel(
@@ -672,7 +688,7 @@ export default function AdminMicrorrutas() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `microrrutas-${informe}-${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.download = `microrrutas-${informe ?? "todos"}-${new Date().toISOString().split("T")[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -755,58 +771,96 @@ export default function AdminMicrorrutas() {
             </button>
             {mostrarMenuInformes && (
               <div className="absolute right-0 z-10 mt-2 w-72 rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
+                {/* Excel SUI — al elegirlo despliega Vigente/Nuevo/Todos debajo,
+                    en vez de 2 filas sueltas con el nombre repetido. */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setMostrarMenuInformes(false);
-                    handleDescargarExcel("vigente");
-                  }}
+                  onClick={() =>
+                    setSubmenuInformeAbierto((v) => (v === "excel" ? null : "excel"))
+                  }
                   disabled={isBusy || descargandoExcel}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-                  Excel SUI Microrrutas — Vigente
+                  <span className="flex items-center gap-2">
+                    {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+                    Excel SUI Microrrutas
+                  </span>
+                  <FaChevronDown
+                    className={`text-xs transition-transform ${submenuInformeAbierto === "excel" ? "rotate-180" : ""}`}
+                  />
                 </button>
+                {submenuInformeAbierto === "excel" && (
+                  <div className="bg-gray-50 py-1">
+                    {(
+                      [
+                        ["vigente", "Vigente"],
+                        ["nuevo", "Nuevo"],
+                        [undefined, "Todos"],
+                      ] as const
+                    ).map(([informe, etiqueta]) => (
+                      <button
+                        key={etiqueta}
+                        type="button"
+                        onClick={() => {
+                          cerrarMenuInformes();
+                          handleDescargarExcel(informe);
+                        }}
+                        disabled={isBusy || descargandoExcel}
+                        className="block w-full px-4 py-1.5 pl-10 text-left text-sm text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Informe SUI (PDF) — mismo patrón que Excel. */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setMostrarMenuInformes(false);
-                    handleDescargarExcel("nuevo");
-                  }}
-                  disabled={isBusy || descargandoExcel}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {descargandoExcel ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
-                  Excel SUI Microrrutas — Nuevo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMostrarMenuInformes(false);
-                    handleGenerarReporteTodas("vigente");
-                  }}
+                  onClick={() =>
+                    setSubmenuInformeAbierto((v) => (v === "informe" ? null : "informe"))
+                  }
                   disabled={isBusy || generandoTodo !== null}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-                  Informe SUI Microrrutas — Vigente ({microrrutasList.length})
+                  <span className="flex items-center gap-2">
+                    {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
+                    Informe SUI Microrrutas ({microrrutasList.length})
+                  </span>
+                  <FaChevronDown
+                    className={`text-xs transition-transform ${submenuInformeAbierto === "informe" ? "rotate-180" : ""}`}
+                  />
                 </button>
+                {submenuInformeAbierto === "informe" && (
+                  <div className="bg-gray-50 py-1">
+                    {(
+                      [
+                        ["vigente", "Vigente"],
+                        ["nuevo", "Nuevo"],
+                        [undefined, "Todos"],
+                      ] as const
+                    ).map(([informe, etiqueta]) => (
+                      <button
+                        key={etiqueta}
+                        type="button"
+                        onClick={() => {
+                          cerrarMenuInformes();
+                          handleGenerarReporteTodas(informe);
+                        }}
+                        disabled={isBusy || generandoTodo !== null}
+                        className="block w-full px-4 py-1.5 pl-10 text-left text-sm text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Mapa de Macrorrutas — acción directa, no tiene variantes. */}
                 <button
                   type="button"
                   onClick={() => {
-                    setMostrarMenuInformes(false);
-                    handleGenerarReporteTodas("nuevo");
-                  }}
-                  disabled={isBusy || generandoTodo !== null}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {generandoTodo ? <FaSpinner className="animate-spin" /> : <FaFileDownload />}
-                  Informe SUI Microrrutas — Nuevo ({microrrutasList.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMostrarMenuInformes(false);
+                    cerrarMenuInformes();
                     handleGenerarMapaMacrorrutas();
                   }}
                   disabled={isBusy || generandoMapaMacrorrutas}
