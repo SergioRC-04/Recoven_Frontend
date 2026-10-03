@@ -42,6 +42,7 @@ export async function getMicrorrutas(filters?: MicrorrutasFilters): Promise<Micr
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
   if (filters?.estado) params.append("estado", filters.estado);
+  if (filters?.modalidad) params.append("modalidad", filters.modalidad);
   const query = params.toString();
   const raw = await recovenApi.get<unknown>(`/microrrutas${query ? `?${query}` : ""}`, false);
   return normalizeMicrorrutasGeoJson(raw);
@@ -105,6 +106,7 @@ function toMicrorrutaFeature(item: MicrorrutaApiItem): MicrorrutaFeature | null 
     estacionTransferencia: item.estacion_transferencia,
     tipoBarrido: item.tipo_barrido,
     estado: item.estado,
+    modalidad: item.modalidad,
     longitudKm: item.longitud_calculada_km,
     // Ya viene en camelCase desde el backend (json_build_object en la
     // consulta) — no hace falta transformar nada aquí.
@@ -242,6 +244,7 @@ export async function exportarMicrorrutasExcel(
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (filters?.modalidad) params.append("modalidad", filters.modalidad);
   if (informe) params.append("informe", informe);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-excel${query ? `?${query}` : ""}`, true);
@@ -261,6 +264,7 @@ export async function exportarMicrorrutasTabla(filters?: MicrorrutasFilters): Pr
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (filters?.modalidad) params.append("modalidad", filters.modalidad);
   const query = params.toString();
   return recovenApi.getBlob(`/microrrutas/exportar-tabla${query ? `?${query}` : ""}`, true);
 }
@@ -281,5 +285,6 @@ export async function exportarMicrorrutasCapa(
   if (filters?.barrioCod) params.append("barrioCod", filters.barrioCod);
   if (filters?.macrorrutaNumero) params.append("macrorrutaNumero", filters.macrorrutaNumero);
   if (filters?.municipio) params.append("municipio", filters.municipio);
+  if (filters?.modalidad) params.append("modalidad", filters.modalidad);
   return recovenApi.getBlob(`/microrrutas/exportar-capa?${params.toString()}`, true);
 }

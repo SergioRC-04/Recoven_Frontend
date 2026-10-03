@@ -42,12 +42,14 @@ import {
   type MicrorrutaProperties,
   type LineStringGeoJson,
   type MacrorrutaResumen,
+  type ModalidadMicrorruta,
 } from "../../types/microrruta";
 import MicrorrutaMapEditor from "./MicrorrutaMapEditor";
 import MicrorrutasTable, { type TrabajadorDeRuta } from "./MicrorrutasTable";
 import MicrorrutaFormModal from "./MicrorrutaFormModal";
 import ExportarCapasModal from "./ExportarCapasModal";
 import AsignarTrabajadorModal from "./AsignarTrabajadorModal";
+import ElegirModalidadModal from "./ElegirModalidadModal";
 import {
   generarReporteMicrorruta,
   generarReporteMicrorrutas,
@@ -67,6 +69,9 @@ type FormModalState =
       // de llegar a este formulario) — ver trazoPendiente más abajo.
       // undefined si se trazó sin elegir ninguno.
       trabajadorPreseleccionado?: Recycler;
+      // A pie / en camión — la pestaña activa al momento de trazar (ver
+      // handleDrawEnd), no un campo que se elige en este formulario.
+      modalidad: ModalidadMicrorruta;
     }
   | { mode: "edit"; microrruta: MicrorrutaProperties }
   | null;
@@ -79,6 +84,7 @@ type TrazoPendiente = {
   geojson: LineStringGeoJson;
   distanciaTotalKm: number;
   nombreSugerido?: string;
+  modalidad: ModalidadMicrorruta;
 };
 
 // Evita que la respuesta de una petición vieja (p. ej. de la ciudad que
@@ -119,6 +125,16 @@ export default function AdminMicrorrutas() {
   // Puerto Colombia hoy es una sola "localidad" que cubre todo el
   // municipio (ver schema.prisma, enum Municipio).
   const [selectedCiudad, setSelectedCiudad] = useState<Municipio>("BARRANQUILLA");
+  // Filtro de modalidad (a pie / en camión), embebido en el encabezado de
+  // esa columna de la tabla (ver MicrorrutasTable.tsx) — no es una
+  // pestaña propia como ciudad. Vacío = sin filtrar (se ven ambas); con
+  // las dos marcadas también equivale a "todas". Solo con exactamente una
+  // marcada se filtra de verdad (ver modalidadFiltro más abajo).
+  const [selectedModalidades, setSelectedModalidades] = useState<Set<ModalidadMicrorruta>>(
+    new Set()
+  );
+  const modalidadFiltro: ModalidadMicrorruta | undefined =
+    selectedModalidades.size === 1 ? [...selectedModalidades][0] : undefined;
   const [selectedLocalidad, setSelectedLocalidad] = useState("");
   const [selectedBarrio, setSelectedBarrio] = useState("");
   // Independiente de localidad/barrio: filtra por en qué localidad cae la
@@ -180,6 +196,14 @@ export default function AdminMicrorrutas() {
   // trabajador?" antes de abrir el formulario de creación — ver
   // handleDrawEnd y TrazoPendiente más arriba.
   const [trazoPendiente, setTrazoPendiente] = useState<TrazoPendiente | null>(null);
+  // Un paso antes que trazoPendiente: el trazo recién terminado espera
+  // primero la respuesta a "¿a pie o en camión?" (hace falta saberlo
+  // antes de poder sugerir el nombre) — ver handleDrawEnd y
+  // ElegirModalidadModal más abajo.
+  const [trazoSinModalidad, setTrazoSinModalidad] = useState<{
+    geojson: LineStringGeoJson;
+    distanciaTotalKm: number;
+  } | null>(null);
 
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
   const [todasLasMicrorrutas, setTodasLasMicrorrutas] = useState<MicrorrutaProperties[]>([]);
@@ -315,7 +339,7 @@ export default function AdminMicrorrutas() {
 
   useEffect(() => {
     const id = peticionTodasMicrorrutas.nueva();
-    getMicrorrutas({ municipio: selectedCiudad })
+    getMicrorrutas({ municipio: selectedCiudad, modalidad: modalidadFiltro })
       .then((geo) => {
         if (peticionTodasMicrorrutas.esVigente(id)) {
           setTodasLasMicrorrutas(geo.features.map((f) => f.properties));
@@ -325,7 +349,7 @@ export default function AdminMicrorrutas() {
         console.error("Error cargando el total de microrrutas para los filtros:", err)
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCiudad, refreshKey, syncKey]);
+  }, [selectedCiudad, modalidadFiltro, refreshKey, syncKey]);
 
   // ─── Cálculo derivado de barrios y barriosGeo (sin setState en efectos) ────
 
@@ -390,6 +414,7 @@ export default function AdminMicrorrutas() {
       macrorrutaNumero: selectedMacrorruta || undefined,
       municipio: selectedCiudad,
       estado: selectedEstado,
+      modalidad: modalidadFiltro,
     })
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
@@ -406,6 +431,7 @@ export default function AdminMicrorrutas() {
     };
   }, [
     selectedCiudad,
+    modalidadFiltro,
     selectedLocalidad,
     selectedBarrio,
     selectedMacrorruta,
@@ -427,6 +453,7 @@ export default function AdminMicrorrutas() {
       macrorrutaNumero: selectedMacrorruta || undefined,
       municipio: selectedCiudad,
       estado: selectedEstado,
+      modalidad: modalidadFiltro,
     })
       .then((data) => {
         if (silentRequestRef.current !== requestId) return;
@@ -453,6 +480,7 @@ export default function AdminMicrorrutas() {
       formModalState !== null ||
       asignandoTrabajadorPara !== null ||
       trazoPendiente !== null ||
+      trazoSinModalidad !== null ||
       mostrarExportarCapas;
   }, [
     drawing,
@@ -460,6 +488,7 @@ export default function AdminMicrorrutas() {
     formModalState,
     asignandoTrabajadorPara,
     trazoPendiente,
+    trazoSinModalidad,
     mostrarExportarCapas,
   ]);
   useEffect(() => {
@@ -613,7 +642,8 @@ export default function AdminMicrorrutas() {
   // Si no se puede resolver la localidad, no se sugiere nada (el campo
   // queda vacío, como antes de que existiera esta función).
   const sugerirNombreMicrorruta = async (
-    geojson: LineStringGeoJson
+    geojson: LineStringGeoJson,
+    modalidad: ModalidadMicrorruta
   ): Promise<string | undefined> => {
     let localidadCod: string | undefined;
 
@@ -633,14 +663,25 @@ export default function AdminMicrorrutas() {
         ?.properties.localidadCod;
     }
 
-    const prefijo = localidadCod ? PREFIJO_POR_LOCALIDAD[localidadCod] : undefined;
-    if (!prefijo) return undefined;
+    const prefijoBase = localidadCod ? PREFIJO_POR_LOCALIDAD[localidadCod] : undefined;
+    if (!prefijoBase) return undefined;
+    // En camión, la numeración queda en su propia familia de nombres
+    // ("Suroccidente-CAM-001"), aparte de la de a pie — así se distinguen
+    // a simple vista en cualquier lista o exportación, y el contador de
+    // una modalidad nunca choca con el de la otra.
+    const prefijo = modalidad === "CAMION" ? `${prefijoBase}-CAM` : prefijoBase;
 
     try {
       // estado: "TODAS" — el nombre es único sin importar si la ruta
       // quedó inactiva, así que también hay que evitar chocar con esos
-      // nombres al calcular el siguiente número.
-      const geo = await getMicrorrutas({ municipio: selectedCiudad, estado: "TODAS" });
+      // nombres al calcular el siguiente número. modalidad: solo cuenta
+      // dentro de la misma familia de nombres (ver prefijo arriba) — la
+      // del trazo que se está nombrando, no el filtro de la tabla.
+      const geo = await getMicrorrutas({
+        municipio: selectedCiudad,
+        estado: "TODAS",
+        modalidad,
+      });
       const prefijoEscapado = prefijo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const patron = new RegExp(`^${prefijoEscapado}-(\\d+)\\s*$`);
       let maxNumero = 0;
@@ -657,12 +698,11 @@ export default function AdminMicrorrutas() {
 
   const handleDrawEnd = async (geojson: LineStringGeoJson, distanciaTotalKm: number) => {
     setDrawing(false);
-    const nombreSugerido = await sugerirNombreMicrorruta(geojson);
-    // Primero se pregunta si se le asigna un trabajador (para poder
-    // precargar la fecha de operación con la suya) — el formulario de
-    // creación se abre después, desde la respuesta a esa pregunta (ver
-    // el render de AsignarTrabajadorModal más abajo).
-    setTrazoPendiente({ geojson, distanciaTotalKm, nombreSugerido });
+    // Primero se pregunta a pie o en camión (hace falta saberlo para
+    // sugerir el nombre — ver ElegirModalidadModal más abajo), luego si
+    // se le asigna un trabajador, y solo entonces se abre el formulario
+    // de creación.
+    setTrazoSinModalidad({ geojson, distanciaTotalKm });
   };
 
   const handleCloseModal = () => setFormModalState(null);
@@ -735,6 +775,7 @@ export default function AdminMicrorrutas() {
           barrioCod: selectedBarrio || undefined,
           macrorrutaNumero: selectedMacrorruta || undefined,
           municipio: selectedCiudad,
+          modalidad: modalidadFiltro,
         },
         informe
       );
@@ -777,6 +818,7 @@ export default function AdminMicrorrutas() {
         barrioCod: selectedBarrio || undefined,
         macrorrutaNumero: selectedMacrorruta || undefined,
         municipio: selectedCiudad,
+        modalidad: modalidadFiltro,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1117,8 +1159,9 @@ export default function AdminMicrorrutas() {
         barriosGeoJson={barriosGeo}
         viasGeoJson={viasGeo}
         microrrutasGeoJson={microrrutasGeoParaMapa}
-        encuadreKey={`${selectedCiudad}|${selectedLocalidad}|${selectedBarrio}|${selectedMacrorruta}|${selectedEstado}|${refreshKey}|${microrrutasGeo ? "cargado" : "cargando"}`}
+        encuadreKey={`${selectedCiudad}|${modalidadFiltro ?? "ambas"}|${selectedLocalidad}|${selectedBarrio}|${selectedMacrorruta}|${selectedEstado}|${refreshKey}|${microrrutasGeo ? "cargado" : "cargando"}`}
         pendingGeojson={
+          trazoSinModalidad?.geojson ??
           trazoPendiente?.geojson ??
           (formModalState?.mode === "create" ? formModalState.geojson : null)
         }
@@ -1197,6 +1240,8 @@ export default function AdminMicrorrutas() {
           microrrutasOcultasIds={microrrutasOcultasIds}
           onToggleVisibilidad={toggleVisibilidadMicrorruta}
           onToggleTodasVisibilidad={toggleTodasVisibilidad}
+          modalidadFiltro={selectedModalidades}
+          onModalidadFiltroChange={setSelectedModalidades}
           onEdit={handleEdit}
           onEditGeometria={(mr) => setEditingGeometriaId(mr.id)}
           onDelete={handleDelete}
@@ -1220,6 +1265,7 @@ export default function AdminMicrorrutas() {
             barrioCod: selectedBarrio || undefined,
             macrorrutaNumero: selectedMacrorruta || undefined,
             municipio: selectedCiudad,
+            modalidad: modalidadFiltro,
           }}
           onClose={() => setMostrarExportarCapas(false)}
         />
@@ -1232,7 +1278,10 @@ export default function AdminMicrorrutas() {
           distanciaTotalKm={formModalState.distanciaTotalKm}
           nombreSugerido={formModalState.nombreSugerido}
           trabajadorPreseleccionado={formModalState.trabajadorPreseleccionado}
-          onReintentarNombre={sugerirNombreMicrorruta}
+          modalidad={formModalState.modalidad}
+          onReintentarNombre={(geojson) =>
+            sugerirNombreMicrorruta(geojson, formModalState.modalidad)
+          }
           onClose={handleCloseModal}
           onSaved={refresh}
           onCreated={(mr) => {
@@ -1269,6 +1318,18 @@ export default function AdminMicrorrutas() {
           onAssigned={() => {
             setAsignandoTrabajadorPara(null);
             refresh();
+          }}
+        />
+      )}
+
+      {trazoSinModalidad && (
+        <ElegirModalidadModal
+          onCancelar={() => setTrazoSinModalidad(null)}
+          onElegir={async (modalidad) => {
+            const { geojson, distanciaTotalKm } = trazoSinModalidad;
+            const nombreSugerido = await sugerirNombreMicrorruta(geojson, modalidad);
+            setTrazoPendiente({ geojson, distanciaTotalKm, nombreSugerido, modalidad });
+            setTrazoSinModalidad(null);
           }}
         />
       )}

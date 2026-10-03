@@ -15,6 +15,7 @@ import {
   type LineStringGeoJson,
   type MicrorrutaFormValues,
   type MicrorrutaProperties,
+  type ModalidadMicrorruta,
 } from "../../types/microrruta";
 import FieldHelp from "./FieldHelp";
 import type { Recycler } from "../../types/recycler";
@@ -44,6 +45,10 @@ type MicrorrutaFormModalProps =
       // editable como cualquier otro valor; undefined si no se eligió
       // ninguno (el campo queda igual que siempre).
       trabajadorPreseleccionado?: Recycler;
+      // A pie / en camión — la decide la pestaña activa en
+      // AdminMicrorrutas.tsx, no es un campo de este formulario (no hay
+      // ningún input para esto; se manda tal cual al crear).
+      modalidad: ModalidadMicrorruta;
       onClose: () => void;
       onSaved: () => void;
       // Se llama solo al CREAR (no al editar), con la microrruta recién
@@ -186,7 +191,11 @@ export default function MicrorrutaFormModal(props: MicrorrutaFormModalProps) {
         await updateMicrorruta(props.microrrutaId, payload);
         onSaved();
       } else {
-        const creada = await createMicrorruta({ ...payload, geojson: props.geojson });
+        const creada = await createMicrorruta({
+          ...payload,
+          geojson: props.geojson,
+          modalidad: props.modalidad,
+        });
         onSaved();
         props.onCreated?.(creada);
       }

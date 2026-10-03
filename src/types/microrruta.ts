@@ -106,6 +106,17 @@ export const ESTADO_MICRORRUTA_LABELS: Record<EstadoMicrorruta, string> = {
   INACTIVA: "Inactivas",
 };
 
+// Independiente del "tipo" (1-8, catálogo cerrado del SUI, no se toca):
+// cualquiera de esos 8 tipos puede hacerse a pie o en camión. Se elige por
+// pestaña en AdminMicrorrutas.tsx al crear la ruta, no es un campo del
+// formulario — igual se guarda y se puede filtrar/exportar por separado.
+export type ModalidadMicrorruta = "A_PIE" | "CAMION";
+
+export const MODALIDAD_MICRORRUTA_LABELS: Record<ModalidadMicrorruta, string> = {
+  A_PIE: "A pie",
+  CAMION: "En camión",
+};
+
 // Días de la semana para el selector de "Días Frecuencia" (formato "1-3-5").
 // Fuente: resolución, campo 11 — códigos 1 a 7 (Lunes a Domingo) más el
 // código 8 "Eventual" para microrrutas sin días fijos. El campo 10
@@ -219,6 +230,7 @@ export interface MicrorrutaProperties {
   estacionTransferencia: number;
   tipoBarrido: number;
   estado: EstadoMicrorruta;
+  modalidad: ModalidadMicrorruta;
   // Calculada por el backend (PostGIS ST_Length). Prisma serializa Decimal
   // como string en JSON; se admite también number para defensividad.
   longitudKm?: number | string | null;
@@ -286,6 +298,7 @@ export interface MicrorrutaApiItem {
   estacion_transferencia: number;
   tipo_barrido: number;
   estado: EstadoMicrorruta;
+  modalidad: ModalidadMicrorruta;
   geojson: LineStringGeoJson | null;
   longitud_calculada_km: string | number | null;
   barrios: BarrioDeMicrorruta[];
@@ -319,6 +332,9 @@ export interface MicrorrutasFilters {
   // se usa p. ej. al calcular el siguiente nombre sugerido, donde
   // importa no chocar con el nombre de una ruta inactiva.
   estado?: EstadoMicrorruta | "TODAS";
+  // A pie / en camión — el otro filtro más amplio, igual de independiente
+  // de los demás que municipio. Ver ModalidadMicrorruta.
+  modalidad?: ModalidadMicrorruta;
 }
 
 // Una fila del selector de macrorrutas del admin — solo las que
@@ -369,6 +385,10 @@ export interface MicrorrutaCreatePayload extends Omit<MicrorrutaFormValues, "tip
   // resto se envía null, no un valor por defecto que se vería como un dato
   // real en el reporte Excel (antes se enviaba 1 por error).
   tipoBarrido: number | null;
+  // NO es un campo del formulario (MicrorrutaFormValues no lo tiene): lo
+  // decide la pestaña activa en AdminMicrorrutas.tsx al momento de crear,
+  // no algo que la persona llene a mano. No editable después de creada.
+  modalidad: ModalidadMicrorruta;
 }
 
 // El backend implementó PUT /admin/microrrutas/:id con UpdateMicrorrutaDto

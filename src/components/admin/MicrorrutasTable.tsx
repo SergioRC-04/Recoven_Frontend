@@ -1,4 +1,5 @@
 // components/admin/MicrorrutasTable.tsx
+import { useEffect, useRef, useState } from "react";
 import {
   FaEdit,
   FaTrash,
@@ -7,9 +8,84 @@ import {
   FaFilePdf,
   FaSpinner,
   FaExclamationTriangle,
+  FaFilter,
 } from "react-icons/fa";
-import { formatearDiasFrecuenciaCorto, type MicrorrutaProperties } from "../../types/microrruta";
+import {
+  formatearDiasFrecuenciaCorto,
+  MODALIDAD_MICRORRUTA_LABELS,
+  type MicrorrutaProperties,
+  type ModalidadMicrorruta,
+} from "../../types/microrruta";
 import type { Clasificacion } from "../../types/recycler";
+
+// Encabezado de la columna "Modalidad": el título en sí es texto fijo,
+// pero trae un botón de filtro embebido (icono + desplegable de
+// checkboxes) en vez de un <select> aparte en la barra de filtros — lo
+// que se marque aquí SÍ filtra de verdad (sube al padre vía onChange),
+// no es solo visual. Ninguna marcada = sin filtrar (se ven ambas).
+function EncabezadoModalidad({
+  seleccionadas,
+  onChange,
+}: {
+  seleccionadas: Set<ModalidadMicrorruta>;
+  onChange: (nuevo: Set<ModalidadMicrorruta>) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [abierto]);
+
+  const toggle = (valor: ModalidadMicrorruta) => {
+    const siguiente = new Set(seleccionadas);
+    if (siguiente.has(valor)) siguiente.delete(valor);
+    else siguiente.add(valor);
+    onChange(siguiente);
+  };
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAbierto((v) => !v);
+        }}
+        className={`flex items-center gap-1.5 normal-case ${
+          seleccionadas.size > 0 ? "text-emerald-600" : ""
+        }`}
+        title="Filtrar por modalidad"
+      >
+        Modalidad
+        <FaFilter className="text-[10px]" />
+      </button>
+      {abierto && (
+        <div className="absolute left-0 z-20 mt-1 w-40 rounded-xl border border-gray-200 bg-white py-1 text-left text-xs font-semibold text-gray-700 normal-case shadow-lg">
+          {(Object.keys(MODALIDAD_MICRORRUTA_LABELS) as ModalidadMicrorruta[]).map((valor) => (
+            <label
+              key={valor}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50"
+            >
+              <input
+                type="checkbox"
+                checked={seleccionadas.has(valor)}
+                onChange={() => toggle(valor)}
+                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              {MODALIDAD_MICRORRUTA_LABELS[valor]}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Formatea la fecha directo desde el texto ISO, sin construir un objeto
 // Date — new Date(iso).toLocaleDateString() convierte a la zona horaria
@@ -65,6 +141,11 @@ interface MicrorrutasTableProps {
   // tiene listadas ahora (respetando los demás filtros activos) — true =
   // mostrarlas todas, false = ocultarlas todas.
   onToggleTodasVisibilidad?: (mostrar: boolean) => void;
+  // Filtro de modalidad embebido en el encabezado de esa columna (ver
+  // EncabezadoModalidad) — opcional: solo AdminMicrorrutas lo pasa; sin
+  // estas dos props el encabezado queda como texto fijo, sin filtro.
+  modalidadFiltro?: Set<ModalidadMicrorruta>;
+  onModalidadFiltroChange?: (nuevo: Set<ModalidadMicrorruta>) => void;
   onEdit: (microrruta: MicrorrutaProperties) => void;
   onEditGeometria: (microrruta: MicrorrutaProperties) => void;
   onDelete: (microrruta: MicrorrutaProperties) => void;
@@ -87,6 +168,8 @@ export default function MicrorrutasTable({
   microrrutasOcultasIds,
   onToggleVisibilidad,
   onToggleTodasVisibilidad,
+  modalidadFiltro,
+  onModalidadFiltroChange,
   onEdit,
   onEditGeometria,
   onDelete,
@@ -228,7 +311,16 @@ export default function MicrorrutasTable({
                 </th>
               )}
               <th className="p-4">Nombre</th>
-              <th className="p-4 text-center">Tipo</th>
+              <th className="p-4 text-center">
+                {onModalidadFiltroChange ? (
+                  <EncabezadoModalidad
+                    seleccionadas={modalidadFiltro ?? new Set()}
+                    onChange={onModalidadFiltroChange}
+                  />
+                ) : (
+                  "Modalidad"
+                )}
+              </th>
               <th className="p-4">Fecha</th>
               <th className="p-4">Días</th>
               <th className="p-4">Trabajador</th>
@@ -294,8 +386,14 @@ export default function MicrorrutasTable({
                     )}
                     <td className="p-4 font-bold text-gray-900">{mr.nombre}</td>
                     <td className="p-4 text-center">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
-                        {mr.tipo}
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
+                          mr.modalidad === "CAMION"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {MODALIDAD_MICRORRUTA_LABELS[mr.modalidad]}
                       </span>
                     </td>
                     <td className="p-4 text-xs text-gray-500">
