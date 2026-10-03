@@ -81,6 +81,20 @@ type TrazoPendiente = {
   nombreSugerido?: string;
 };
 
+// Evita que la respuesta de una petición vieja (p. ej. de la ciudad que
+// ya se abandonó al cambiar de pestaña) sobrescriba el estado después de
+// que una más nueva ya resolvió primero — red o payload más lentos no
+// garantizan llegar en el mismo orden en que se pidieron. Mismo problema
+// que ya resolvía requestIdRef solo para microrrutasGeo; generalizado
+// aquí para reusarlo en localidades, macrorrutas, recicladores, barrios y
+// vías, que hoy tienen el mismo riesgo al depender de selectedCiudad.
+function useGuardaPeticionVigente() {
+  const ref = useRef(0);
+  const nueva = () => ++ref.current;
+  const esVigente = (id: number) => ref.current === id;
+  return { nueva, esVigente };
+}
+
 // Prefijo de nombre por localidad — NO es literalmente Localidades.nombre
 // (p. ej. "02" es "Norte - centro histórico" en la BD, pero las
 // microrrutas ya existentes usan "NorteCentro"; "PC-000" es "Puerto
@@ -221,13 +235,30 @@ export default function AdminMicrorrutas() {
 
   // ─── Carga de datos iniciales ────────────────────────────────────────────────
 
+  // Una petición por recurso, para que una respuesta vieja de la ciudad
+  // ya abandonada no se cuele por encima de la más nueva (ver
+  // useGuardaPeticionVigente más arriba) — es justo lo que producía que,
+  // al cambiar a Puerto Colombia, a veces se vieran barrios/recicladores
+  // de Barranquilla sin ningún barrio de Puerto Colombia encima (la
+  // respuesta de Barranquilla, más pesada, llegaba después).
+  const peticionLocalidades = useGuardaPeticionVigente();
+  const peticionMacrorrutas = useGuardaPeticionVigente();
+  const peticionRecyclers = useGuardaPeticionVigente();
+  const peticionBarrios = useGuardaPeticionVigente();
+  const peticionVias = useGuardaPeticionVigente();
+  const peticionTodasMicrorrutas = useGuardaPeticionVigente();
+
   // Localidades — se recarga al cambiar de ciudad. Cambiar de ciudad
   // también limpia localidad/barrio/macrorruta, porque esas selecciones
   // ya no aplican necesariamente a la ciudad nueva.
   useEffect(() => {
+    const id = peticionLocalidades.nueva();
     getLocalidadesList(selectedCiudad)
-      .then(setLocalidades)
+      .then((data) => {
+        if (peticionLocalidades.esVigente(id)) setLocalidades(data);
+      })
       .catch((err) => console.error("Error cargando localidades:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCiudad]);
 
   // Lista de macrorrutas para el select de filtro — se refresca con
@@ -235,9 +266,13 @@ export default function AdminMicrorrutas() {
   // primera microrruta de una localidad) aparezca sin recargar la
   // página.
   useEffect(() => {
+    const id = peticionMacrorrutas.nueva();
     getMacrorrutas(selectedCiudad)
-      .then(setMacrorrutas)
+      .then((data) => {
+        if (peticionMacrorrutas.esVigente(id)) setMacrorrutas(data);
+      })
       .catch((err) => console.error("Error cargando macrorrutas:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCiudad, refreshKey, syncKey]);
 
   // Recicladores — alimentan la columna "Trabajador" de la tabla Y la
@@ -247,31 +282,49 @@ export default function AdminMicrorrutas() {
   // "Trabajador" recoge la asignación sin necesidad de un fetch aparte
   // solo para eso.
   useEffect(() => {
-    getRecyclers({})
-      .then(setRecyclers)
+    const id = peticionRecyclers.nueva();
+    getRecyclers({ municipio: selectedCiudad })
+      .then((data) => {
+        if (peticionRecyclers.esVigente(id)) setRecyclers(data);
+      })
       .catch((err) => console.error("Error cargando recicladores:", err));
-  }, [refreshKey, syncKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCiudad, refreshKey, syncKey]);
 
   // Barrios de la ciudad activa — se recarga al cambiar de ciudad.
   useEffect(() => {
+    const id = peticionBarrios.nueva();
     getBarriosGeoJson({ municipio: selectedCiudad })
-      .then(setTodosLosBarriosGeo)
+      .then((data) => {
+        if (peticionBarrios.esVigente(id)) setTodosLosBarriosGeo(data);
+      })
       .catch((err) => console.error("Error cargando todos los barrios:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCiudad]);
 
   // Vías de la ciudad activa — hoy siempre vacío para Puerto Colombia.
   useEffect(() => {
+    const id = peticionVias.nueva();
     getViasGeoJson({ municipio: selectedCiudad })
-      .then(setViasGeo)
+      .then((data) => {
+        if (peticionVias.esVigente(id)) setViasGeo(data);
+      })
       .catch((err) => console.error("Error cargando vías:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCiudad]);
 
   useEffect(() => {
+    const id = peticionTodasMicrorrutas.nueva();
     getMicrorrutas({ municipio: selectedCiudad })
-      .then((geo) => setTodasLasMicrorrutas(geo.features.map((f) => f.properties)))
+      .then((geo) => {
+        if (peticionTodasMicrorrutas.esVigente(id)) {
+          setTodasLasMicrorrutas(geo.features.map((f) => f.properties));
+        }
+      })
       .catch((err) =>
         console.error("Error cargando el total de microrrutas para los filtros:", err)
       );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCiudad, refreshKey, syncKey]);
 
   // ─── Cálculo derivado de barrios y barriosGeo (sin setState en efectos) ────
