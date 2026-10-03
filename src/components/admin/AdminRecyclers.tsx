@@ -27,6 +27,7 @@ import { descargarBlob } from "../../lib/descargarBlob";
 import { CLASIFICACION_LABELS, type Recycler, type Clasificacion } from "../../types/recycler";
 import type { Barrio, Municipio } from "../../types/geo";
 import RecyclersTable from "./RecyclersTable";
+import FiltroMultiSelect from "./FiltroMultiSelect";
 import RecyclerFormModal from "./RecyclerFormModal";
 import ExportarRecyclersModal from "./ExportarRecyclersModal";
 import CerrarCensoModal from "./CerrarCensoModal";
@@ -58,8 +59,8 @@ function KpiCard({ label, value, icon, accent }: KpiCardProps) {
 
 type EditingState = Recycler | "new" | null;
 type EstadoFiltro = "activos" | "desvinculados";
-type RutasFiltro = "" | "con_ruta" | "sin_ruta";
-type CensoFiltro = "todos" | "censados" | "no_censados";
+type ValorRutas = "con_ruta" | "sin_ruta";
+type ValorCenso = "censados" | "no_censados";
 
 // Sondeo del estado del certificado general tras una mutación — cada
 // cuánto se pregunta, y cuántas veces como máximo antes de rendirse (tope
@@ -69,9 +70,11 @@ const CERTIFICADOS_POLL_MAX_INTENTOS = 20; // ~30s
 
 export default function AdminRecyclers() {
   // Cinco dimensiones de filtro, independientes y combinables entre sí —
-  // reemplazan a las antiguas pestañas (una sola, excluyente) por
-  // selects, tal como se pidió. "" o "todos" significa "sin filtrar por
-  // esta dimensión".
+  // reemplazan a las antiguas pestañas (una sola, excluyente). Rutas,
+  // Clasificación, Censo y Barrio admiten marcar varias opciones a la
+  // vez (p. ej. Nuevo + Regular) — de ahí los Set en vez de un solo
+  // valor; ningún elemento marcado equivale a "sin filtrar por esta
+  // dimensión" (antes era "" o "todos").
   // El filtro más amplio de los seis, y el primero visualmente — mismo
   // concepto Y mismo estilo (pestañas, siempre una activa, sin "Todas")
   // que en AdminMicrorrutas.tsx: Barranquilla se divide en localidades/
@@ -84,10 +87,10 @@ export default function AdminRecyclers() {
   // se ven en esta pestaña aparte.
   const [ciudadFiltro, setCiudadFiltro] = useState<Municipio | "SIN_CIUDAD">("BARRANQUILLA");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("activos");
-  const [rutasFiltro, setRutasFiltro] = useState<RutasFiltro>("");
-  const [clasificacionFiltro, setClasificacionFiltro] = useState<Clasificacion | "">("");
-  const [censoFiltro, setCensoFiltro] = useState<CensoFiltro>("todos");
-  const [barrioFiltro, setBarrioFiltro] = useState("");
+  const [rutasFiltro, setRutasFiltro] = useState<Set<ValorRutas>>(new Set());
+  const [clasificacionFiltro, setClasificacionFiltro] = useState<Set<Clasificacion>>(new Set());
+  const [censoFiltro, setCensoFiltro] = useState<Set<ValorCenso>>(new Set());
+  const [barrioFiltro, setBarrioFiltro] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
@@ -111,13 +114,16 @@ export default function AdminRecyclers() {
   // claves, no se guarda aparte.
   const [resultado, setResultado] = useState<{ clave: string; data: Recycler[] } | null>(null);
   const recyclers = resultado?.data ?? null;
+  // JSON.stringify no serializa un Set de forma útil ("{}" siempre) — se
+  // convierte a array ordenado primero, así dos selecciones iguales (sin
+  // importar en qué orden se marcaron) producen la misma clave.
   const claveConsulta = JSON.stringify([
     ciudadFiltro,
     estadoFiltro,
-    rutasFiltro,
-    clasificacionFiltro,
-    censoFiltro,
-    barrioFiltro,
+    [...rutasFiltro].sort(),
+    [...clasificacionFiltro].sort(),
+    [...censoFiltro].sort(),
+    [...barrioFiltro].sort(),
     search,
     tableKey,
   ]);
@@ -146,7 +152,7 @@ export default function AdminRecyclers() {
   // handler que la origina, no en un useEffect.
   const handleCiudadChange = (value: Municipio | "SIN_CIUDAD") => {
     setCiudadFiltro(value);
-    setBarrioFiltro("");
+    setBarrioFiltro(new Set());
   };
 
   const tableRequestIdRef = useRef(0);
@@ -180,10 +186,13 @@ export default function AdminRecyclers() {
 
     getRecyclers({
       desvinculados: estadoFiltro === "desvinculados",
-      rutas: rutasFiltro || undefined,
-      clasificacion: clasificacionFiltro || undefined,
-      censado: censoFiltro === "todos" ? undefined : censoFiltro === "censados",
-      barrioId: barrioFiltro || undefined,
+      // Rutas y Censo solo tienen 2 valores posibles en total — marcar
+      // los dos (o ninguno) equivale a "sin filtrar por esto", igual que
+      // antes de que estas dos fueran multi-select.
+      rutas: rutasFiltro.size === 1 ? [...rutasFiltro][0] : undefined,
+      clasificacion: clasificacionFiltro.size > 0 ? [...clasificacionFiltro] : undefined,
+      censado: censoFiltro.size === 1 ? [...censoFiltro][0] === "censados" : undefined,
+      barrioId: barrioFiltro.size > 0 ? [...barrioFiltro] : undefined,
       municipio: ciudadFiltro,
       search: search || undefined,
     })
@@ -358,18 +367,18 @@ export default function AdminRecyclers() {
 
   const hayFiltrosActivos =
     estadoFiltro !== "activos" ||
-    rutasFiltro !== "" ||
-    clasificacionFiltro !== "" ||
-    censoFiltro !== "todos" ||
-    barrioFiltro !== "" ||
+    rutasFiltro.size > 0 ||
+    clasificacionFiltro.size > 0 ||
+    censoFiltro.size > 0 ||
+    barrioFiltro.size > 0 ||
     searchInput !== "";
 
   const handleLimpiarFiltros = () => {
     setEstadoFiltro("activos");
-    setRutasFiltro("");
-    setClasificacionFiltro("");
-    setCensoFiltro("todos");
-    setBarrioFiltro("");
+    setRutasFiltro(new Set());
+    setClasificacionFiltro(new Set());
+    setCensoFiltro(new Set());
+    setBarrioFiltro(new Set());
     setSearchInput("");
     setSearch("");
   };
@@ -545,72 +554,48 @@ export default function AdminRecyclers() {
           </select>
         </div>
 
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Filtrar Rutas
-          </label>
-          <select
-            value={rutasFiltro}
-            onChange={(e) => setRutasFiltro(e.target.value as RutasFiltro)}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          >
-            <option value="">Todas</option>
-            <option value="con_ruta">Con ruta</option>
-            <option value="sin_ruta">Sin ruta</option>
-          </select>
-        </div>
+        <FiltroMultiSelect
+          label="Filtrar Rutas"
+          opciones={[
+            { value: "con_ruta", label: "Con ruta" },
+            { value: "sin_ruta", label: "Sin ruta" },
+          ]}
+          seleccionados={rutasFiltro}
+          onChange={setRutasFiltro}
+        />
 
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Clasificación
-          </label>
-          <select
-            value={clasificacionFiltro}
-            onChange={(e) => setClasificacionFiltro(e.target.value as Clasificacion | "")}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          >
-            <option value="">Todas</option>
-            {Object.entries(CLASIFICACION_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FiltroMultiSelect
+          label="Clasificación"
+          opciones={Object.entries(CLASIFICACION_LABELS).map(([value, label]) => ({
+            value: value as Clasificacion,
+            label,
+          }))}
+          seleccionados={clasificacionFiltro}
+          onChange={setClasificacionFiltro}
+        />
 
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Censo
-          </label>
-          <select
-            value={censoFiltro}
-            onChange={(e) => setCensoFiltro(e.target.value as CensoFiltro)}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          >
-            <option value="todos">Todos</option>
-            <option value="censados">Censados</option>
-            <option value="no_censados">Sin censar</option>
-          </select>
-        </div>
+        <FiltroMultiSelect
+          label="Censo"
+          opciones={[
+            { value: "censados", label: "Censados" },
+            { value: "no_censados", label: "Sin censar" },
+          ]}
+          seleccionados={censoFiltro}
+          onChange={setCensoFiltro}
+          textoTodas="Todos"
+        />
 
-        <div>
-          <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">
-            Barrio
-          </label>
-          <select
-            value={barrioFiltro}
-            onChange={(e) => setBarrioFiltro(e.target.value)}
-            disabled={ciudadFiltro === "SIN_CIUDAD" || barrios.length === 0}
-            className="mt-1 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:opacity-50"
-          >
-            <option value="">Todos</option>
-            {(ciudadFiltro === "SIN_CIUDAD" ? [] : barrios).map((b) => (
-              <option key={b.identificador} value={b.identificador}>
-                {b.nombre_barrio}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FiltroMultiSelect
+          label="Barrio"
+          opciones={(ciudadFiltro === "SIN_CIUDAD" ? [] : barrios).map((b) => ({
+            value: b.identificador,
+            label: b.nombre_barrio,
+          }))}
+          seleccionados={barrioFiltro}
+          onChange={setBarrioFiltro}
+          disabled={ciudadFiltro === "SIN_CIUDAD" || barrios.length === 0}
+          textoTodas="Todos"
+        />
 
         <div className="relative">
           <label className="block text-xs font-bold tracking-wider text-gray-500 uppercase">

@@ -30,9 +30,9 @@ export async function getRecyclers(filters: RecyclersFilters): Promise<Recycler[
   const params = new URLSearchParams();
   if (filters.desvinculados) params.append("desvinculados", "true");
   if (filters.rutas) params.append("rutas", filters.rutas);
-  if (filters.clasificacion) params.append("clasificacion", filters.clasificacion);
+  filters.clasificacion?.forEach((c) => params.append("clasificacion", c));
   if (filters.censado !== undefined) params.append("censado", String(filters.censado));
-  if (filters.barrioId) params.append("barrioId", filters.barrioId);
+  filters.barrioId?.forEach((b) => params.append("barrioId", b));
   if (filters.municipio) params.append("municipio", filters.municipio);
   if (filters.search) params.append("search", filters.search);
   const query = params.toString();

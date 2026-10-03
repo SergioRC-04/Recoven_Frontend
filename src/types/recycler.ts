@@ -119,11 +119,13 @@ export interface RecyclersFilters {
   // true = ver el histórico de desvinculados; false/undefined = solo activos.
   desvinculados?: boolean;
   rutas?: "con_ruta" | "sin_ruta";
-  clasificacion?: Clasificacion;
+  // Array: se puede marcar más de una a la vez (p. ej. Nuevo + Regular) —
+  // ver AdminRecyclers.tsx. Vacío/undefined = sin filtrar por esto.
+  clasificacion?: Clasificacion[];
   censado?: boolean;
-  // identificador del barrio (mismo campo que usan los selects de barrio
-  // del resto de la app).
-  barrioId?: string;
+  // identificador(es) del barrio — igual que clasificacion, admite varios
+  // a la vez.
+  barrioId?: string[];
   // "BARRANQUILLA" | "PUERTO_COLOMBIA" — independiente de barrioId,
   // combinable con el resto. "SIN_CIUDAD" = recicladores sin ningún barrio
   // asignado (la ciudad de un reciclador se deduce de sus barrios).
