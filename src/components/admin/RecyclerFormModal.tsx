@@ -1,8 +1,7 @@
 // components/admin/RecyclerFormModal.tsx
 import { useEffect, useState, type FormEvent } from "react";
 import { FaTimes, FaSpinner, FaRecycle } from "react-icons/fa";
-import { createRecycler, updateRecycler, exportarCertificado } from "../../services/recyclers";
-import { descargarBlob } from "../../lib/descargarBlob";
+import { createRecycler, updateRecycler } from "../../services/recyclers";
 import { getMicrorrutasList } from "../../services/microrutas";
 import { getBarriosList } from "../../services/geo";
 import type { Barrio, Municipio } from "../../types/geo";
@@ -115,16 +114,6 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
   // ese hecho, deshabilitándose.
   const tieneMicrorrutas = values.microrrutasIds.length > 0;
 
-  const descargarCertificado = async (id: number, nombreCompleto: string) => {
-    try {
-      const blob = await exportarCertificado(id);
-      descargarBlob(blob, `certificado-${nombreCompleto.replace(/\s+/g, "_")}.pdf`);
-    } catch (error) {
-      console.error("Error descargando certificado:", error);
-      alert("No se pudo descargar el certificado.");
-    }
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -152,13 +141,9 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
     onClose();
 
     if (creado) {
-      if (
-        confirm(
-          `Reciclador creado correctamente. ¿Deseas descargar su certificado de vinculación ahora?`
-        )
-      ) {
-        await descargarCertificado(creado.id, creado.nombreCompleto);
-      }
+      alert(
+        "Reciclador creado correctamente. Puede descargar su documento de afiliación desde la tabla."
+      );
     }
   };
 

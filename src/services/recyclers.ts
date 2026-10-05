@@ -108,6 +108,17 @@ export async function asignarMicrorrutaARecycler(
 }
 
 /**
+ * Descarga la Solicitud de Inclusión (PDF) de un reciclador — se genera
+ * al vuelo en el backend en cada llamado, no hay nada pre-generado ni
+ * guardado: siempre refleja los barrios/rutas actuales del reciclador.
+ *
+ * Controller: GET /recyclers/:id/afiliacion  (JwtAuthGuard)
+ */
+export async function exportarAfiliacion(id: number): Promise<Blob> {
+  return recovenApi.getBlob(`/recyclers/${id}/afiliacion`, true);
+}
+
+/**
  * Descarga el Excel de recicladores para el reporte indicado (con colores
  * de Censo/Rutas/Clasificación aplicados en el backend). "desvinculados" es
  * el único tipo sin columna de Clasificación.
@@ -121,38 +132,6 @@ export async function exportarRecyclers(
   const params = new URLSearchParams({ tipo });
   if (municipio) params.append("municipio", municipio);
   return recovenApi.getBlob(`/recyclers/exportar?${params.toString()}`, true);
-}
-
-/**
- * Descarga el certificado de vinculación de un reciclador (PDF, 2 copias
- * por hoja para recortar).
- *
- * Controller: GET /recyclers/:id/certificado  (JwtAuthGuard)
- */
-export async function exportarCertificado(id: number): Promise<Blob> {
-  return recovenApi.getBlob(`/recyclers/${id}/certificado`, true);
-}
-
-export interface EstadoCertificadosGeneral {
-  actualizando: boolean;
-  url: string | null;
-}
-
-/**
- * Estado actual del reporte combinado de certificados — de solo lectura,
- * no dispara ninguna regeneración. Se usa de dos formas: una vez al
- * cargar la página de recicladores, y en sondeo (polling) después de
- * crear/editar un reciclador, hasta que actualizando pase a false — eso
- * es "escuchar" cuándo terminó la regeneración en segundo plano que se
- * disparó del lado del backend, sin que esta consulta la dispare ella
- * misma. El botón "Exportar Certificados" solo usa la URL que ya está
- * guardada en el estado del componente (de la última consulta), sin
- * volver a llamar a esto en el momento del clic.
- *
- * Controller: GET /recyclers/certificados-estado  (JwtAuthGuard)
- */
-export async function obtenerEstadoCertificadosGeneral(): Promise<EstadoCertificadosGeneral> {
-  return recovenApi.get("/recyclers/certificados-estado", true);
 }
 
 /**

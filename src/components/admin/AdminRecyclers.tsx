@@ -1,5 +1,6 @@
 // components/admin/AdminRecyclers.tsx
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import JSZip from "jszip";
 import {
   FaUsers,
   FaCheckCircle,
@@ -19,8 +20,7 @@ import {
   toggleCenso,
   desvincularRecycler,
   reactivarRecycler,
-  exportarCertificado,
-  obtenerEstadoCertificadosGeneral,
+  exportarAfiliacion,
 } from "../../services/recyclers";
 import { getBarriosList } from "../../services/geo";
 import { descargarBlob } from "../../lib/descargarBlob";
@@ -61,12 +61,6 @@ type EditingState = Recycler | "new" | null;
 type EstadoFiltro = "activos" | "desvinculados";
 type ValorRutas = "con_ruta" | "sin_ruta";
 type ValorCenso = "censados" | "no_censados";
-
-// Sondeo del estado del certificado general tras una mutación — cada
-// cuánto se pregunta, y cuántas veces como máximo antes de rendirse (tope
-// de seguridad si algo quedara atascado del lado del backend).
-const CERTIFICADOS_POLL_INTERVAL_MS = 1500;
-const CERTIFICADOS_POLL_MAX_INTENTOS = 20; // ~30s
 
 export default function AdminRecyclers() {
   // Cinco dimensiones de filtro, independientes y combinables entre sí —
@@ -136,14 +130,14 @@ export default function AdminRecyclers() {
 
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [descargandoCertificadoId, setDescargandoCertificadoId] = useState<number | null>(null);
+  // ZIP con el documento de afiliación de todos los recicladores
+  // cargados que ya lo tengan — se arma en el navegador al momento del
+  // clic (no hay nada que "esperar a que termine de regenerar" como
+  // antes, los PDF ya están guardados de antemano).
+  const [generandoZipCertificados, setGenerandoZipCertificados] = useState(false);
   const [editingRecycler, setEditingRecycler] = useState<EditingState>(null);
   const [mostrarExportar, setMostrarExportar] = useState(false);
   const [mostrarCerrarCenso, setMostrarCerrarCenso] = useState(false);
-
-  const [urlCertificadosGeneral, setUrlCertificadosGeneral] = useState<string | null>(null);
-  const [actualizandoCertificados, setActualizandoCertificados] = useState(false);
-  const certificadosPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const certificadosPollIntentosRef = useRef(0);
 
   // Cambiar de ciudad limpia barrioFiltro, en el mismo evento (no en un
   // efecto aparte) — un barrio de Barranquilla no existe al ver Puerto
@@ -231,65 +225,6 @@ export default function AdminRecyclers() {
     sinRutas: recyclers?.filter((r) => r.microrrutas.length === 0).length ?? 0,
   };
 
-  // Detiene el sondeo (si había uno en curso) — se llama tanto al
-  // terminar exitosamente como al desmontar el componente.
-  const detenerEscuchaCertificados = () => {
-    if (certificadosPollRef.current) {
-      clearInterval(certificadosPollRef.current);
-      certificadosPollRef.current = null;
-    }
-  };
-
-  // Una sola consulta de estado — la usa tanto la carga inicial (una vez,
-  // sin sondeo) como cada "tick" del sondeo tras una mutación.
-  const consultarEstadoCertificados = async () => {
-    try {
-      const estado = await obtenerEstadoCertificadosGeneral();
-      if (estado.url) setUrlCertificadosGeneral(estado.url);
-      if (!estado.actualizando) {
-        setActualizandoCertificados(false);
-        detenerEscuchaCertificados();
-      }
-    } catch (err) {
-      console.error("Error consultando el estado del certificado general:", err);
-    }
-  };
-
-  // Se llama justo después de CUALQUIER cambio a un reciclador (crear,
-  // editar, censar, desvincular, reactivar) — no al apretar el botón de
-  // exportar. Pone el botón "Exportar Certificados" en estado
-  // "Actualizando..." y sondea el estado hasta que la regeneración en
-  // segundo plano del backend termine — eso es "estar a la escucha" de
-  // que terminó, sin que el propio botón dispare ni espere nada él mismo.
-  const iniciarEscuchaCertificados = () => {
-    setActualizandoCertificados(true);
-    detenerEscuchaCertificados();
-    certificadosPollIntentosRef.current = 0;
-
-    certificadosPollRef.current = setInterval(() => {
-      certificadosPollIntentosRef.current += 1;
-      if (certificadosPollIntentosRef.current > CERTIFICADOS_POLL_MAX_INTENTOS) {
-        setActualizandoCertificados(false);
-        detenerEscuchaCertificados();
-        return;
-      }
-      consultarEstadoCertificados();
-    }, CERTIFICADOS_POLL_INTERVAL_MS);
-  };
-
-  // Estado inicial del certificado general al cargar la página — una sola
-  // consulta, sin sondeo.
-  useEffect(() => {
-    // consultarEstadoCertificados es async y hace un await real (una
-    // petición de red) antes de llamar a setState — no un setState
-    // síncrono dentro del efecto. El linter no distingue esto porque la
-    // función está definida aparte.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    consultarEstadoCertificados();
-    return () => detenerEscuchaCertificados();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const handleToggleCenso = async (recycler: Recycler) => {
     setTogglingIds((prev) => new Set(prev).add(recycler.id));
     try {
@@ -300,7 +235,6 @@ export default function AdminRecyclers() {
       setRecyclers((prev) =>
         prev.map((r) => (r.id === recycler.id ? { ...r, censado: !r.censado } : r))
       );
-      iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error actualizando censo:", error);
       alert("No se pudo actualizar el estado de censo.");
@@ -323,7 +257,6 @@ export default function AdminRecyclers() {
     try {
       await desvincularRecycler(recycler.id);
       refresh();
-      iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error desvinculando reciclador:", error);
       alert("No se pudo desvincular al reciclador.");
@@ -335,21 +268,23 @@ export default function AdminRecyclers() {
     try {
       await reactivarRecycler(recycler.id);
       refresh();
-      iniciarEscuchaCertificados();
     } catch (error) {
       console.error("Error reactivando reciclador:", error);
       alert("No se pudo reactivar al reciclador.");
     }
   };
 
+  // El documento se genera al vuelo en el backend en cada descarga — no
+  // hay nada pre-generado ni guardado, así que siempre refleja los
+  // barrios/rutas actuales del reciclador.
   const handleDescargarCertificado = async (recycler: Recycler) => {
     setDescargandoCertificadoId(recycler.id);
     try {
-      const blob = await exportarCertificado(recycler.id);
-      descargarBlob(blob, `certificado-${recycler.nombreCompleto.replace(/\s+/g, "_")}.pdf`);
+      const blob = await exportarAfiliacion(recycler.id);
+      descargarBlob(blob, `afiliacion-${recycler.nombreCompleto.replace(/\s+/g, "_")}.pdf`);
     } catch (error) {
-      console.error("Error descargando certificado:", error);
-      alert("No se pudo descargar el certificado.");
+      console.error("Error descargando el documento de afiliación:", error);
+      alert("No se pudo descargar el documento de afiliación.");
     } finally {
       setDescargandoCertificadoId(null);
     }
@@ -357,12 +292,38 @@ export default function AdminRecyclers() {
 
   const handleRecyclerSaved = () => {
     refresh();
-    iniciarEscuchaCertificados();
   };
 
-  const handleExportarCertificadosGeneral = () => {
-    if (!urlCertificadosGeneral) return;
-    window.open(urlCertificadosGeneral, "_blank");
+  // Arma un ZIP con el documento de afiliación de cada reciclador cargado,
+  // generando cada PDF al vuelo contra el backend.
+  const handleExportarCertificadosGeneral = async () => {
+    const lista = recyclers ?? [];
+    if (lista.length === 0) {
+      alert("No hay recicladores en esta lista para exportar.");
+      return;
+    }
+
+    setGenerandoZipCertificados(true);
+    try {
+      const zip = new JSZip();
+      await Promise.all(
+        lista.map(async (r) => {
+          try {
+            const blob = await exportarAfiliacion(r.id);
+            zip.file(`afiliacion-${r.nombreCompleto.replace(/\s+/g, "_")}-${r.cedula}.pdf`, blob);
+          } catch (error) {
+            console.error(`Error generando el documento de ${r.nombreCompleto}:`, error);
+          }
+        })
+      );
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      descargarBlob(zipBlob, `afiliaciones-recicladores-${new Date().toISOString().split("T")[0]}.zip`);
+    } catch (error) {
+      console.error("Error armando el ZIP de documentos de afiliación:", error);
+      alert("No se pudo armar el archivo ZIP.");
+    } finally {
+      setGenerandoZipCertificados(false);
+    }
   };
 
   const hayFiltrosActivos =
@@ -401,16 +362,12 @@ export default function AdminRecyclers() {
           </button>
           <button
             onClick={handleExportarCertificadosGeneral}
-            disabled={actualizandoCertificados || !urlCertificadosGeneral}
-            title={
-              actualizandoCertificados
-                ? "Regenerando el certificado general con el último cambio..."
-                : "Descargar un solo PDF con el certificado de cada reciclador activo"
-            }
+            disabled={generandoZipCertificados}
+            title="Descargar un ZIP con el documento de afiliación de cada reciclador de esta lista"
             className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actualizandoCertificados ? <FaSpinner className="animate-spin" /> : <FaIdCard />}
-            {actualizandoCertificados ? "Actualizando certificados..." : "Exportar Certificados"}
+            {generandoZipCertificados ? <FaSpinner className="animate-spin" /> : <FaIdCard />}
+            {generandoZipCertificados ? "Armando ZIP..." : "Exportar Certificados"}
           </button>
           <button
             onClick={() => setMostrarCerrarCenso(true)}
@@ -453,7 +410,6 @@ export default function AdminRecyclers() {
           onClose={() => setMostrarCerrarCenso(false)}
           onCerrado={() => {
             refresh();
-            iniciarEscuchaCertificados();
           }}
         />
       )}

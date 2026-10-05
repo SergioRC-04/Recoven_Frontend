@@ -57,7 +57,7 @@ export default function RecyclersTable({
       <button
         onClick={() => onDescargarCertificado(r)}
         disabled={descargandoCertificadoId === r.id}
-        title="Descargar certificado de vinculación"
+        title="Descargar documento de afiliación"
         className="text-emerald-600 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {descargandoCertificadoId === r.id ? <FaSpinner className="animate-spin" /> : <FaFilePdf />}
