@@ -5,16 +5,29 @@ import type {
   RecyclersFilters,
   RecyclerCreatePayload,
   RecyclerUpdatePayload,
-  TipoExportRecyclers,
   MunicipioCierre,
   CierreCensoPreview,
   CierreCensoResultado,
 } from "../types/recycler";
-import type { Municipio } from "../types/geo";
 
 // Todos los endpoints del módulo comparten la misma base /recyclers.
 // El guard JwtAuthGuard está aplicado a nivel de clase en el controller,
 // por lo que TODOS los métodos requieren autenticación (requiresAuth: true).
+
+// Compartido por getRecyclers y exportarRecyclers — el Excel exportado
+// debe coincidir exactamente con lo que muestra la tabla en pantalla, así
+// que ambos mandan los mismos filtros al backend de la misma forma.
+function construirQueryFiltros(filters: RecyclersFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.desvinculados) params.append("desvinculados", "true");
+  if (filters.rutas) params.append("rutas", filters.rutas);
+  filters.clasificacion?.forEach((c) => params.append("clasificacion", c));
+  if (filters.censado !== undefined) params.append("censado", String(filters.censado));
+  filters.barrioId?.forEach((b) => params.append("barrioId", b));
+  if (filters.municipio) params.append("municipio", filters.municipio);
+  if (filters.search) params.append("search", filters.search);
+  return params;
+}
 
 /**
  * Lista recicladores combinando las dimensiones de filtro que hagan
@@ -27,15 +40,7 @@ import type { Municipio } from "../types/geo";
  * Controller: GET /recyclers  (JwtAuthGuard — nivel de clase)
  */
 export async function getRecyclers(filters: RecyclersFilters): Promise<Recycler[]> {
-  const params = new URLSearchParams();
-  if (filters.desvinculados) params.append("desvinculados", "true");
-  if (filters.rutas) params.append("rutas", filters.rutas);
-  filters.clasificacion?.forEach((c) => params.append("clasificacion", c));
-  if (filters.censado !== undefined) params.append("censado", String(filters.censado));
-  filters.barrioId?.forEach((b) => params.append("barrioId", b));
-  if (filters.municipio) params.append("municipio", filters.municipio);
-  if (filters.search) params.append("search", filters.search);
-  const query = params.toString();
+  const query = construirQueryFiltros(filters).toString();
   return recovenApi.get(`/recyclers${query ? `?${query}` : ""}`, true);
 }
 
@@ -119,19 +124,17 @@ export async function exportarAfiliacion(id: number): Promise<Blob> {
 }
 
 /**
- * Descarga el Excel de recicladores para el reporte indicado (con colores
- * de Censo/Rutas/Clasificación aplicados en el backend). "desvinculados" es
- * el único tipo sin columna de Clasificación.
+ * Descarga en Excel exactamente los recicladores que cumplen estos
+ * filtros (con colores de Censo/Rutas/Clasificación aplicados en el
+ * backend) — mismos filtros que ya usa getRecyclers, así el Excel
+ * siempre coincide con lo que se ve en la tabla en pantalla. La columna
+ * Clasificación se oculta sola cuando `desvinculados` es true.
  *
- * Controller: GET /recyclers/exportar?tipo=...  (JwtAuthGuard)
+ * Controller: GET /recyclers/exportar  (JwtAuthGuard)
  */
-export async function exportarRecyclers(
-  tipo: TipoExportRecyclers,
-  municipio?: Municipio | "SIN_CIUDAD"
-): Promise<Blob> {
-  const params = new URLSearchParams({ tipo });
-  if (municipio) params.append("municipio", municipio);
-  return recovenApi.getBlob(`/recyclers/exportar?${params.toString()}`, true);
+export async function exportarRecyclers(filters: RecyclersFilters): Promise<Blob> {
+  const query = construirQueryFiltros(filters).toString();
+  return recovenApi.getBlob(`/recyclers/exportar${query ? `?${query}` : ""}`, true);
 }
 
 /**

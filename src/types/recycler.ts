@@ -40,22 +40,6 @@ export const TIPO_DOCUMENTO_LABELS: Record<TipoDocumento, string> = {
   OTRO: "Otro",
 };
 
-// Los 6 reportes exportables — censados/no_censados y con_ruta/sin_ruta
-// coinciden con dimensiones de filtro de la tabla; desvinculados también,
-// aunque ahí se expresa como un valor de "estado" en vez de su propia
-// pestaña (ver EstadoFiltro en AdminRecyclers.tsx).
-export type TipoExportRecyclers =
-  "todos" | "desvinculados" | "censados" | "no_censados" | "con_ruta" | "sin_ruta";
-
-export const TIPOS_EXPORT_RECYCLERS: { tipo: TipoExportRecyclers; label: string }[] = [
-  { tipo: "todos", label: "Todos (activos)" },
-  { tipo: "desvinculados", label: "Desvinculados" },
-  { tipo: "censados", label: "Censados" },
-  { tipo: "no_censados", label: "Sin censar" },
-  { tipo: "con_ruta", label: "Con ruta" },
-  { tipo: "sin_ruta", label: "Sin ruta" },
-];
-
 // ============================================================
 // RELACIONES — forma en que el backend las devuelve mapeadas
 // ============================================================
@@ -96,10 +80,12 @@ export interface Recycler {
   // pertenece a ningún barrio formal". Un solo campo general por
   // reciclador, no uno por cada barrio. null cuando no se ha escrito nada.
   detalleUbicacion: string | null;
-  // Edad y dirección (de la casa, no de correo) — no se muestran en la
-  // tabla del admin, solo se usan en los informes de Excel para imprimir.
-  // null en los recicladores registrados antes de que existieran estos campos.
-  edad: number | null;
+  // Fecha de nacimiento y dirección (de la casa, no de correo) — no se
+  // muestran en la tabla del admin, solo se usan en los informes de
+  // Excel para imprimir (la edad se calcula ahí a partir de esta fecha,
+  // no se guarda fija). null en los recicladores registrados antes de
+  // que existieran estos campos.
+  fechaNacimiento: string | null;
   direccion: string | null;
   estadoVinculacion: EstadoVinculacion;
   barrios: BarrioResumen[];
@@ -152,10 +138,10 @@ export interface RecyclerFormValues {
   censado: boolean;
   clasificacion: Clasificacion;
   detalleUbicacion: string;
-  // Edad y dirección (de la casa) — como el resto del formulario, se
-  // manejan como string aquí; el backend convierte edad a número (y un
-  // texto vacío en cualquiera de los dos se guarda como null).
-  edad: string;
+  // Fecha de nacimiento ("YYYY-MM-DD", vacío si no se tiene) y dirección
+  // de la casa — un texto vacío en cualquiera de los dos se guarda como
+  // null en el backend.
+  fechaNacimiento: string;
   direccion: string;
   // Fecha de ingreso — se envía como "YYYY-MM-DD". El backend convierte a Date.
   fechaIngreso: string;
@@ -185,7 +171,7 @@ export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
     censado: recycler.censado,
     clasificacion: recycler.clasificacion,
     detalleUbicacion: recycler.detalleUbicacion ?? "",
-    edad: recycler.edad !== null ? String(recycler.edad) : "",
+    fechaNacimiento: recycler.fechaNacimiento ? recycler.fechaNacimiento.split("T")[0] : "",
     direccion: recycler.direccion ?? "",
     fechaIngreso: recycler.fechaIngreso
       ? recycler.fechaIngreso.split("T")[0]

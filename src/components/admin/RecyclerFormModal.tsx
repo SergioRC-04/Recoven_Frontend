@@ -39,7 +39,7 @@ const EMPTY_VALUES: RecyclerFormValues = {
   censado: false,
   clasificacion: "NUEVO",
   detalleUbicacion: "",
-  edad: "",
+  fechaNacimiento: "",
   direccion: "",
   fechaIngreso: FECHA_INGRESO_DEFAULT,
   barriosIds: [],
@@ -214,18 +214,18 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-gray-700">Edad (opcional)</label>
+              <label className="block text-sm font-bold text-gray-700">
+                Fecha de nacimiento (opcional)
+              </label>
               <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={120}
-                value={values.edad}
-                onChange={(e) => update("edad", e.target.value)}
+                type="date"
+                value={values.fechaNacimiento}
+                onChange={(e) => update("fechaNacimiento", e.target.value)}
                 className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
               <p className="mt-1 text-xs text-gray-400">
-                No se muestra en la tabla, solo en los informes de Excel para imprimir.
+                Se usa para calcular la edad en los informes de Excel — no hay que actualizarla
+                cada año.
               </p>
             </div>
 

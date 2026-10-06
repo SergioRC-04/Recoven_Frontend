@@ -1,5 +1,5 @@
 // components/admin/AdminRecyclers.tsx
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import JSZip from "jszip";
 import {
   FaUsers,
@@ -21,15 +21,20 @@ import {
   desvincularRecycler,
   reactivarRecycler,
   exportarAfiliacion,
+  exportarRecyclers,
 } from "../../services/recyclers";
 import { getBarriosList } from "../../services/geo";
 import { descargarBlob } from "../../lib/descargarBlob";
-import { CLASIFICACION_LABELS, type Recycler, type Clasificacion } from "../../types/recycler";
+import {
+  CLASIFICACION_LABELS,
+  type Recycler,
+  type Clasificacion,
+  type RecyclersFilters,
+} from "../../types/recycler";
 import type { Barrio, Municipio } from "../../types/geo";
 import RecyclersTable from "./RecyclersTable";
 import FiltroMultiSelect from "./FiltroMultiSelect";
 import RecyclerFormModal from "./RecyclerFormModal";
-import ExportarRecyclersModal from "./ExportarRecyclersModal";
 import CerrarCensoModal from "./CerrarCensoModal";
 
 interface KpiCardProps {
@@ -136,7 +141,7 @@ export default function AdminRecyclers() {
   // antes, los PDF ya están guardados de antemano).
   const [generandoZipCertificados, setGenerandoZipCertificados] = useState(false);
   const [editingRecycler, setEditingRecycler] = useState<EditingState>(null);
-  const [mostrarExportar, setMostrarExportar] = useState(false);
+  const [exportandoTabla, setExportandoTabla] = useState(false);
   const [mostrarCerrarCenso, setMostrarCerrarCenso] = useState(false);
 
   // Cambiar de ciudad limpia barrioFiltro, en el mismo evento (no en un
@@ -172,13 +177,15 @@ export default function AdminRecyclers() {
       .catch((err) => console.error("Error cargando barrios para el filtro:", err));
   }, [ciudadFiltro]);
 
-  // Tabla de recicladores — se recarga al cambiar cualquiera de las cinco
-  // dimensiones de filtro o tableKey. Las cinco viajan combinadas en la
-  // misma consulta (AND), no una a la vez como las pestañas antiguas.
-  useEffect(() => {
-    const requestId = ++tableRequestIdRef.current;
-
-    getRecyclers({
+  // Mismos filtros que ve la tabla, en un solo objeto — lo usan tanto la
+  // consulta de abajo como el botón "Exportar Tabla" (ver
+  // handleExportarTabla), así el Excel exportado siempre coincide
+  // exactamente con lo que está en pantalla, sin forma de desincronizarse.
+  // Memoizado (no un objeto literal nuevo en cada render) para que el
+  // useEffect de abajo pueda depender de él sin volver a pedir la tabla
+  // en cada render.
+  const filtrosActuales: RecyclersFilters = useMemo(
+    () => ({
       desvinculados: estadoFiltro === "desvinculados",
       // Rutas y Censo solo tienen 2 valores posibles en total — marcar
       // los dos (o ninguno) equivale a "sin filtrar por esto", igual que
@@ -189,7 +196,17 @@ export default function AdminRecyclers() {
       barrioId: barrioFiltro.size > 0 ? [...barrioFiltro] : undefined,
       municipio: ciudadFiltro,
       search: search || undefined,
-    })
+    }),
+    [estadoFiltro, rutasFiltro, clasificacionFiltro, censoFiltro, barrioFiltro, ciudadFiltro, search]
+  );
+
+  // Tabla de recicladores — se recarga al cambiar cualquiera de las cinco
+  // dimensiones de filtro o tableKey. Las cinco viajan combinadas en la
+  // misma consulta (AND), no una a la vez como las pestañas antiguas.
+  useEffect(() => {
+    const requestId = ++tableRequestIdRef.current;
+
+    getRecyclers(filtrosActuales)
       .then((data) => {
         if (tableRequestIdRef.current !== requestId) return; // respuesta obsoleta, se ignora
         setResultado({ clave: claveConsulta, data });
@@ -199,17 +216,7 @@ export default function AdminRecyclers() {
         console.error("Error cargando recicladores:", err);
         setResultado({ clave: claveConsulta, data: [] });
       });
-  }, [
-    claveConsulta,
-    ciudadFiltro,
-    estadoFiltro,
-    rutasFiltro,
-    clasificacionFiltro,
-    censoFiltro,
-    barrioFiltro,
-    search,
-    tableKey,
-  ]);
+  }, [claveConsulta, filtrosActuales, tableKey]);
 
   // KPIs derivados de la lista YA filtrada — no un fetch aparte. Esto es
   // justamente lo que hace que "obedezcan a los filtros": si el filtro
@@ -294,6 +301,21 @@ export default function AdminRecyclers() {
     refresh();
   };
 
+  // Exporta en Excel exactamente lo que se ve en la tabla ahora mismo —
+  // mismos filtros (filtrosActuales), no un reporte aparte a elegir.
+  const handleExportarTabla = async () => {
+    setExportandoTabla(true);
+    try {
+      const blob = await exportarRecyclers(filtrosActuales);
+      descargarBlob(blob, `recicladores-${new Date().toISOString().split("T")[0]}.xlsx`);
+    } catch (error) {
+      console.error("Error exportando la tabla de recicladores:", error);
+      alert("No se pudo generar el archivo.");
+    } finally {
+      setExportandoTabla(false);
+    }
+  };
+
   // Arma un ZIP con el documento de afiliación de cada reciclador cargado,
   // generando cada PDF al vuelo contra el backend.
   const handleExportarCertificadosGeneral = async () => {
@@ -355,10 +377,13 @@ export default function AdminRecyclers() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setMostrarExportar(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200"
+            onClick={handleExportarTabla}
+            disabled={exportandoTabla}
+            title="Exporta en Excel los recicladores que se ven en la tabla, con los filtros aplicados"
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <FaFileExcel /> Exportar Tablas
+            {exportandoTabla ? <FaSpinner className="animate-spin" /> : <FaFileExcel />}
+            {exportandoTabla ? "Exportando..." : "Exportar Tabla"}
           </button>
           <button
             onClick={handleExportarCertificadosGeneral}
@@ -389,20 +414,6 @@ export default function AdminRecyclers() {
           </button>
         </div>
       </div>
-
-      {mostrarExportar && (
-        <ExportarRecyclersModal
-          onClose={() => setMostrarExportar(false)}
-          municipio={ciudadFiltro}
-          municipioLabel={
-            ciudadFiltro === "BARRANQUILLA"
-              ? "Barranquilla"
-              : ciudadFiltro === "PUERTO_COLOMBIA"
-                ? "Puerto Colombia"
-                : "recicladores sin ciudad"
-          }
-        />
-      )}
 
       {mostrarCerrarCenso && ciudadFiltro !== "SIN_CIUDAD" && (
         <CerrarCensoModal
