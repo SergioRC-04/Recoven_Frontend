@@ -96,6 +96,11 @@ export interface Recycler {
   // pertenece a ningún barrio formal". Un solo campo general por
   // reciclador, no uno por cada barrio. null cuando no se ha escrito nada.
   detalleUbicacion: string | null;
+  // Edad y dirección (de la casa, no de correo) — no se muestran en la
+  // tabla del admin, solo se usan en los informes de Excel para imprimir.
+  // null en los recicladores registrados antes de que existieran estos campos.
+  edad: number | null;
+  direccion: string | null;
   estadoVinculacion: EstadoVinculacion;
   barrios: BarrioResumen[];
   microrrutas: MicrorrutaResumen[];
@@ -147,6 +152,11 @@ export interface RecyclerFormValues {
   censado: boolean;
   clasificacion: Clasificacion;
   detalleUbicacion: string;
+  // Edad y dirección (de la casa) — como el resto del formulario, se
+  // manejan como string aquí; el backend convierte edad a número (y un
+  // texto vacío en cualquiera de los dos se guarda como null).
+  edad: string;
+  direccion: string;
   // Fecha de ingreso — se envía como "YYYY-MM-DD". El backend convierte a Date.
   fechaIngreso: string;
   // Se envían al backend como arrays de IDs
@@ -175,6 +185,8 @@ export function toRecyclerFormValues(recycler: Recycler): RecyclerFormValues {
     censado: recycler.censado,
     clasificacion: recycler.clasificacion,
     detalleUbicacion: recycler.detalleUbicacion ?? "",
+    edad: recycler.edad !== null ? String(recycler.edad) : "",
+    direccion: recycler.direccion ?? "",
     fechaIngreso: recycler.fechaIngreso
       ? recycler.fechaIngreso.split("T")[0]
       : FECHA_INGRESO_DEFAULT,

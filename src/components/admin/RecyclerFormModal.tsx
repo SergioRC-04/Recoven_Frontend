@@ -39,6 +39,8 @@ const EMPTY_VALUES: RecyclerFormValues = {
   censado: false,
   clasificacion: "NUEVO",
   detalleUbicacion: "",
+  edad: "",
+  direccion: "",
   fechaIngreso: FECHA_INGRESO_DEFAULT,
   barriosIds: [],
   microrrutasIds: [],
@@ -212,6 +214,22 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
             </div>
 
             <div>
+              <label className="block text-sm font-bold text-gray-700">Edad (opcional)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={120}
+                value={values.edad}
+                onChange={(e) => update("edad", e.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                No se muestra en la tabla, solo en los informes de Excel para imprimir.
+              </p>
+            </div>
+
+            <div>
               <label className="block text-sm font-bold text-gray-700">Clasificación</label>
               <select
                 value={values.clasificacion}
@@ -331,6 +349,24 @@ export default function RecyclerFormModal(props: RecyclerFormModalProps) {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-bold text-gray-700">
+              Dirección de la casa (opcional)
+            </label>
+            <input
+              type="text"
+              maxLength={255}
+              value={values.direccion}
+              onChange={(e) => update("direccion", e.target.value)}
+              placeholder='Ej: "Calle 45 #12-30, Barrio El Bosque"'
+              className="mt-1 w-full rounded-xl border border-gray-300 p-3 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Dirección física de la casa (no de correo). No se muestra en la tabla, solo en los
+              informes de Excel para imprimir.
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm font-bold text-gray-700">
